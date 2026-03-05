@@ -12,13 +12,7 @@ from ..parser import parse_file, ALL_EXTENSIONS
 from ..security import is_secret_file
 from ..storage import DocStore
 from ..summarizer import summarize_sections
-
-
-SKIP_PATTERNS = [
-    "node_modules/", "vendor/", "venv/", ".venv/", "__pycache__/",
-    "dist/", "build/", ".git/", ".tox/", ".mypy_cache/",
-    ".gradle/", "target/",
-]
+from ._constants import SKIP_PATTERNS
 
 
 def parse_github_url(url: str) -> tuple:
@@ -36,49 +30,62 @@ def parse_github_url(url: str) -> tuple:
 
 
 def _should_skip(path: str) -> bool:
+    normalized = "/" + path.replace("\\", "/")
     for pat in SKIP_PATTERNS:
-        if pat in path:
+        if ("/" + pat) in normalized:
             return True
     return False
 
 
-async def fetch_repo_tree(owner: str, repo: str, token: Optional[str] = None) -> list:
+async def fetch_repo_tree(
+    owner: str, repo: str, token: Optional[str] = None, client: Optional[httpx.AsyncClient] = None
+) -> list:
     url = f"https://api.github.com/repos/{owner}/{repo}/git/trees/HEAD"
     params = {"recursive": "1"}
     headers = {"Accept": "application/vnd.github.v3+json"}
     if token:
         headers["Authorization"] = f"token {token}"
-    async with httpx.AsyncClient() as client:
+    if client:
         response = await client.get(url, params=params, headers=headers)
+        response.raise_for_status()
+        return response.json().get("tree", [])
+    async with httpx.AsyncClient() as c:
+        response = await c.get(url, params=params, headers=headers)
         response.raise_for_status()
         return response.json().get("tree", [])
 
 
 async def fetch_file_content(
-    owner: str, repo: str, path: str, token: Optional[str] = None
+    owner: str, repo: str, path: str, token: Optional[str] = None,
+    client: Optional[httpx.AsyncClient] = None,
 ) -> str:
     url = f"https://api.github.com/repos/{owner}/{repo}/contents/{path}"
     headers = {"Accept": "application/vnd.github.v3.raw"}
     if token:
         headers["Authorization"] = f"token {token}"
-    async with httpx.AsyncClient() as client:
+    if client:
         response = await client.get(url, headers=headers)
+        response.raise_for_status()
+        return response.text
+    async with httpx.AsyncClient() as c:
+        response = await c.get(url, headers=headers)
         response.raise_for_status()
         return response.text
 
 
 async def fetch_gitignore(
-    owner: str, repo: str, token: Optional[str] = None
+    owner: str, repo: str, token: Optional[str] = None,
+    client: Optional[httpx.AsyncClient] = None,
 ) -> Optional[str]:
     try:
-        return await fetch_file_content(owner, repo, ".gitignore", token)
+        return await fetch_file_content(owner, repo, ".gitignore", token, client=client)
     except Exception:
         return None
 
 
-def discover_doc_files(tree_entries: list, max_files: int = 500) -> list:
+def discover_doc_files(tree_entries: list, max_files: int = 500, gitignore_spec=None) -> list:
     """Filter tree entries to doc files."""
-    import pathspec
+    import os as _os
 
     files = []
     for entry in tree_entries:
@@ -87,7 +94,6 @@ def discover_doc_files(tree_entries: list, max_files: int = 500) -> list:
         path = entry.get("path", "")
         size = entry.get("size", 0)
 
-        import os as _os
         _, ext = _os.path.splitext(path)
         if ext.lower() not in ALL_EXTENSIONS:
             continue
@@ -99,6 +105,9 @@ def discover_doc_files(tree_entries: list, max_files: int = 500) -> list:
             continue
 
         if size > 500 * 1024:
+            continue
+
+        if gitignore_spec and gitignore_spec.match_file(path):
             continue
 
         files.append(path)
@@ -136,31 +145,41 @@ async def index_repo(
     warnings = []
 
     try:
-        try:
-            tree_entries = await fetch_repo_tree(owner, repo, github_token)
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 404:
-                return {"success": False, "error": f"Repository not found: {owner}/{repo}"}
-            elif e.response.status_code == 403:
-                return {"success": False, "error": "GitHub API rate limit exceeded. Set GITHUB_TOKEN."}
-            raise
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            try:
+                tree_entries = await fetch_repo_tree(owner, repo, github_token, client=client)
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 404:
+                    return {"success": False, "error": f"Repository not found: {owner}/{repo}"}
+                elif e.response.status_code == 403:
+                    return {"success": False, "error": "GitHub API rate limit exceeded. Set GITHUB_TOKEN."}
+                raise
 
-        source_files = discover_doc_files(tree_entries)
-        if not source_files:
-            return {"success": False, "error": "No documentation files found"}
-
-        semaphore = asyncio.Semaphore(10)
-
-        async def fetch_with_limit(path: str) -> tuple:
-            async with semaphore:
+            gitignore_spec = None
+            gitignore_content = await fetch_gitignore(owner, repo, github_token, client=client)
+            if gitignore_content:
+                import pathspec
                 try:
-                    content = await fetch_file_content(owner, repo, path, github_token)
-                    return path, content
+                    gitignore_spec = pathspec.PathSpec.from_lines("gitignore", gitignore_content.splitlines())
                 except Exception:
-                    return path, ""
+                    pass
 
-        tasks = [fetch_with_limit(p) for p in source_files]
-        file_contents = await asyncio.gather(*tasks)
+            source_files = discover_doc_files(tree_entries, gitignore_spec=gitignore_spec)
+            if not source_files:
+                return {"success": False, "error": "No documentation files found"}
+
+            semaphore = asyncio.Semaphore(10)
+
+            async def fetch_with_limit(path: str) -> tuple:
+                async with semaphore:
+                    try:
+                        content = await fetch_file_content(owner, repo, path, github_token, client=client)
+                        return path, content
+                    except Exception:
+                        return path, ""
+
+            tasks = [fetch_with_limit(p) for p in source_files]
+            file_contents = await asyncio.gather(*tasks)
 
         all_sections = []
         doc_types: dict = {}
@@ -192,7 +211,7 @@ async def index_repo(
         all_sections = summarize_sections(all_sections, use_ai=use_ai_summaries)
 
         store = DocStore(base_path=storage_path)
-        store.save_index(
+        saved = store.save_index(
             owner=owner,
             name=repo,
             sections=all_sections,
@@ -204,7 +223,7 @@ async def index_repo(
         result = {
             "success": True,
             "repo": f"{owner}/{repo}",
-            "indexed_at": store.load_index(owner, repo).indexed_at,
+            "indexed_at": saved.indexed_at,
             "file_count": len(parsed_files),
             "section_count": len(all_sections),
             "doc_types": doc_types,

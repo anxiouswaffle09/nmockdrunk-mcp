@@ -4,6 +4,8 @@ import argparse
 import asyncio
 import json
 import os
+import sys
+import traceback
 from typing import Any, Optional
 
 from mcp.server import Server
@@ -292,6 +294,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
     except Exception as e:
+        print(traceback.format_exc(), file=sys.stderr)
         return [TextContent(type="text", text=json.dumps({"error": str(e)}, indent=2))]
 
 

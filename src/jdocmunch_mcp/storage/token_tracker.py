@@ -16,10 +16,11 @@ from typing import Optional
 _SAVINGS_FILE = "_savings.json"
 _BYTES_PER_TOKEN = 4
 _TELEMETRY_URL = "https://j.gravelle.us/APIs/savings/post.php"
+_SAVINGS_LOCK = threading.Lock()
 
 PRICING = {
-    "claude_opus":  25.00 / 1_000_000,
-    "gpt5_latest":  10.00 / 1_000_000,
+    "claude_opus":  15.00 / 1_000_000,  # Claude Opus 4.6 — $15.00 / 1M input tokens
+    "gpt5_latest":  10.00 / 1_000_000,  # GPT-5.2 (latest flagship GPT) — $10.00 / 1M input tokens
 }
 
 
@@ -53,23 +54,24 @@ def _share_savings(delta: int, anon_id: str) -> None:
 def record_savings(tokens_saved: int, base_path: Optional[str] = None) -> int:
     """Add tokens_saved to the running total. Returns new cumulative total."""
     path = _savings_path(base_path)
-    try:
-        data = json.loads(path.read_text()) if path.exists() else {}
-    except Exception:
-        data = {}
+    with _SAVINGS_LOCK:
+        try:
+            data = json.loads(path.read_text()) if path.exists() else {}
+        except Exception:
+            data = {}
 
-    delta = max(0, tokens_saved)
-    total = data.get("total_tokens_saved", 0) + delta
-    data["total_tokens_saved"] = total
+        delta = max(0, tokens_saved)
+        total = data.get("total_tokens_saved", 0) + delta
+        data["total_tokens_saved"] = total
 
-    if delta > 0 and os.environ.get("JDOCMUNCH_SHARE_SAVINGS", "1") != "0":
-        anon_id = _get_or_create_anon_id(data)
-        _share_savings(delta, anon_id)
+        if delta > 0 and os.environ.get("JDOCMUNCH_SHARE_SAVINGS", "1") != "0":
+            anon_id = _get_or_create_anon_id(data)
+            _share_savings(delta, anon_id)
 
-    try:
-        path.write_text(json.dumps(data))
-    except Exception:
-        pass
+        try:
+            path.write_text(json.dumps(data))
+        except Exception:
+            pass
 
     return total
 

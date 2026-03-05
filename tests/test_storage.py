@@ -1,12 +1,13 @@
 """Tests for storage module."""
 
+import threading
 import pytest
 import tempfile
 from pathlib import Path
 
 from jdocmunch_mcp.parser import parse_file
 from jdocmunch_mcp.storage.doc_store import DocStore, DocIndex
-from jdocmunch_mcp.storage.token_tracker import estimate_savings, cost_avoided
+from jdocmunch_mcp.storage.token_tracker import estimate_savings, cost_avoided, record_savings
 
 
 SAMPLE_MD = """# Root
@@ -114,6 +115,35 @@ class TestDocStore:
         assert owner == "local"
         assert name == "myrepo"
 
+    def test_resolve_repo_glob_injection(self, tmp_path):
+        """Glob metacharacters in repo name should not match unintended repos."""
+        store = make_store(tmp_path)
+        sections, raw_files, doc_types = make_sections_and_files()
+        store.save_index("local", "realrepo", sections, raw_files, doc_types)
+        # Passing "*" should not match realrepo via glob expansion
+        owner, name = store._resolve_repo("*")
+        # Falls back to ("local", "*") — not ("local", "realrepo")
+        assert name != "realrepo"
+
+    def test_directory_layout(self, tmp_path):
+        """Index and content should be stored under base_path/owner/name."""
+        store = make_store(tmp_path)
+        sections, raw_files, doc_types = make_sections_and_files()
+        store.save_index("myowner", "myname", sections, raw_files, doc_types)
+        assert (tmp_path / "myowner" / "myname.json").exists()
+        assert (tmp_path / "myowner" / "myname").is_dir()
+
+    def test_repo_slug_no_collision(self, tmp_path):
+        """Different owner/name combos that share a flat slug must not collide."""
+        store = make_store(tmp_path)
+        sections, raw_files, doc_types = make_sections_and_files()
+        store.save_index("foo-bar", "baz", sections, raw_files, doc_types)
+        store.save_index("foo", "bar-baz", sections, raw_files, doc_types)
+        repos = store.list_repos()
+        repo_ids = {r["repo"] for r in repos}
+        assert "foo-bar/baz" in repo_ids
+        assert "foo/bar-baz" in repo_ids
+
 
 class TestDocIndexSearch:
     def setup_method(self):
@@ -161,3 +191,26 @@ class TestTokenTracker:
         assert "cost_avoided" in ca
         assert "total_cost_avoided" in ca
         assert "claude_opus" in ca["cost_avoided"]
+
+    def test_record_savings_thread_safety(self, tmp_path):
+        """Concurrent record_savings calls must not lose increments."""
+        n_threads = 20
+        increment = 100
+        errors = []
+
+        def do_record():
+            try:
+                record_savings(increment, base_path=str(tmp_path))
+            except Exception as e:
+                errors.append(e)
+
+        threads = [threading.Thread(target=do_record) for _ in range(n_threads)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert not errors
+        from jdocmunch_mcp.storage.token_tracker import get_total_saved
+        total = get_total_saved(base_path=str(tmp_path))
+        assert total == n_threads * increment

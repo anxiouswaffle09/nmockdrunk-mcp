@@ -3,6 +3,8 @@
 import pytest
 from pathlib import Path
 
+from jdocmunch_mcp.tools.index_local import _should_skip
+
 from jdocmunch_mcp.tools.index_local import index_local
 from jdocmunch_mcp.tools.list_repos import list_repos
 from jdocmunch_mcp.tools.delete_index import delete_index
@@ -26,6 +28,28 @@ def indexed_repo(tmp_path):
     )
     assert result["success"], f"Indexing failed: {result}"
     return result["repo"], str(tmp_path)
+
+
+class TestShouldSkip:
+    def test_skips_build(self):
+        assert _should_skip("build/output.md") is True
+
+    def test_skips_node_modules(self):
+        assert _should_skip("node_modules/pkg/README.md") is True
+
+    def test_does_not_skip_rebuild(self):
+        """'rebuild/' should not be caught by the 'build/' pattern."""
+        assert _should_skip("rebuild/output.md") is False
+
+    def test_does_not_skip_normal_file(self):
+        assert _should_skip("docs/guide.md") is False
+
+    def test_skips_nested_git(self):
+        assert _should_skip("submodule/.git/config") is True
+
+    def test_does_not_skip_partial_match_in_filename(self):
+        """'build_notes.md' has 'build' but no 'build/' component."""
+        assert _should_skip("docs/build_notes.md") is False
 
 
 class TestIndexLocal:
@@ -241,3 +265,27 @@ class TestGetSections:
         )
         assert "sections" in result
         assert result["section_count"] == len(ids)
+
+    def test_meta_complete(self, indexed_repo):
+        """_meta must include tokens_saved, total_tokens_saved, and cost_avoided."""
+        repo_id, storage_path = indexed_repo
+        toc = get_toc(repo=repo_id, storage_path=storage_path)
+        ids = [s["id"] for s in toc["sections"][:2]]
+
+        result = get_sections(repo=repo_id, section_ids=ids, storage_path=storage_path)
+        meta = result["_meta"]
+        assert "tokens_saved" in meta
+        assert "total_tokens_saved" in meta
+        assert "cost_avoided" in meta
+        assert "total_cost_avoided" in meta
+
+    def test_invalid_section_id_returns_error(self, indexed_repo):
+        """Invalid section IDs should produce per-item error dicts, not crash."""
+        repo_id, storage_path = indexed_repo
+        result = get_sections(
+            repo=repo_id,
+            section_ids=["invalid::id::nope#9"],
+            storage_path=storage_path,
+        )
+        assert result["section_count"] == 1
+        assert "error" in result["sections"][0]

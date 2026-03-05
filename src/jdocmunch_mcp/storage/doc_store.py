@@ -121,14 +121,15 @@ class DocStore:
             raise ValueError(f"Invalid {field_name}: {value!r}")
         return value
 
-    def _repo_slug(self, owner: str, name: str) -> str:
-        return f"{self._safe_repo_component(owner, 'owner')}-{self._safe_repo_component(name, 'name')}"
-
     def _index_path(self, owner: str, name: str) -> Path:
-        return self.base_path / f"{self._repo_slug(owner, name)}.json"
+        o = self._safe_repo_component(owner, "owner")
+        n = self._safe_repo_component(name, "name")
+        return self.base_path / o / f"{n}.json"
 
     def _content_dir(self, owner: str, name: str) -> Path:
-        return self.base_path / self._repo_slug(owner, name)
+        o = self._safe_repo_component(owner, "owner")
+        n = self._safe_repo_component(name, "name")
+        return self.base_path / o / n
 
     def _safe_content_path(self, content_dir: Path, relative_path: str) -> Optional[Path]:
         try:
@@ -168,6 +169,7 @@ class DocStore:
         )
 
         index_path = self._index_path(owner, name)
+        index_path.parent.mkdir(parents=True, exist_ok=True)
         tmp_path = index_path.with_suffix(".json.tmp")
         with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(self._index_to_dict(index), f, indent=2)
@@ -239,7 +241,7 @@ class DocStore:
     def list_repos(self) -> list:
         """List all indexed doc sets."""
         repos = []
-        for index_file in self.base_path.glob("*.json"):
+        for index_file in self.base_path.glob("*/*.json"):
             if index_file.name.startswith("_"):
                 continue
             try:
@@ -294,13 +296,15 @@ class DocStore:
             parts = repo.split("/", 1)
             return parts[0], parts[1]
 
-        # Try to find by name glob
-        matches = list(self.base_path.glob(f"*-{repo}.json"))
+        # Try to find by name glob — sanitize first to prevent glob injection
+        try:
+            repo = self._safe_repo_component(repo, "repo")
+        except ValueError:
+            return "local", repo
+        matches = list(self.base_path.glob(f"*/{repo}.json"))
         if len(matches) == 1:
-            stem = matches[0].stem  # e.g. "local-myrepo"
-            parts = stem.split("-", 1)
-            if len(parts) == 2:
-                return parts[0], parts[1]
+            owner = matches[0].parent.name
+            return owner, repo
 
         # Default to local/name
         return "local", repo

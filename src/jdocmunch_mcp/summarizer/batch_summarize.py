@@ -1,8 +1,31 @@
 """Three-tier summarization for doc sections: heading > AI > title fallback."""
 
 import os
+import re
 from dataclasses import dataclass
 from typing import Optional
+
+_SUMMARY_LINE_RE = re.compile(r"^(\d+)\.\s+(.+)")
+
+
+def _build_prompt(sections: list) -> str:
+    lines = [
+        "Summarize each documentation section in ONE short sentence (max 15 words).",
+        "Focus on what the section covers.",
+        "",
+        "Input:",
+    ]
+    for i, sec in enumerate(sections, 1):
+        snippet = sec.content[:200].replace("\n", " ")
+        lines.append(f"{i}. [{sec.title}] {snippet}")
+    lines.extend([
+        "",
+        "Output format: NUMBER. SUMMARY",
+        "Example: 1. Explains how to install the package via pip.",
+        "",
+        "Summaries:",
+    ])
+    return "\n".join(lines)
 
 from ..parser.sections import Section
 
@@ -101,14 +124,11 @@ class BatchSummarizer:
             line = line.strip()
             if not line:
                 continue
-            if "." in line:
-                parts = line.split(".", 1)
-                try:
-                    num = int(parts[0].strip())
-                    if 1 <= num <= expected_count:
-                        summaries[num - 1] = parts[1].strip()
-                except ValueError:
-                    continue
+            m = _SUMMARY_LINE_RE.match(line)
+            if m:
+                num = int(m.group(1))
+                if 1 <= num <= expected_count:
+                    summaries[num - 1] = m.group(2).strip()
         return summaries
 
 
@@ -159,23 +179,7 @@ class GeminiBatchSummarizer:
                     sec.summary = title_fallback(sec)
 
     def _build_prompt(self, sections: list) -> str:
-        lines = [
-            "Summarize each documentation section in ONE short sentence (max 15 words).",
-            "Focus on what the section covers.",
-            "",
-            "Input:",
-        ]
-        for i, sec in enumerate(sections, 1):
-            snippet = sec.content[:200].replace("\n", " ")
-            lines.append(f"{i}. [{sec.title}] {snippet}")
-        lines.extend([
-            "",
-            "Output format: NUMBER. SUMMARY",
-            "Example: 1. Explains how to install the package via pip.",
-            "",
-            "Summaries:",
-        ])
-        return "\n".join(lines)
+        return _build_prompt(sections)
 
     def _parse_response(self, text: str, expected_count: int) -> list:
         summaries = [""] * expected_count

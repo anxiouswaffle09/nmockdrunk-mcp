@@ -17,13 +17,7 @@ from ..security import (
 )
 from ..storage import DocStore
 from ..summarizer import summarize_sections
-
-
-SKIP_PATTERNS = [
-    "node_modules/", "vendor/", "venv/", ".venv/", "__pycache__/",
-    "dist/", "build/", ".git/", ".tox/", ".mypy_cache/",
-    ".gradle/", "target/",
-]
+from ._constants import SKIP_PATTERNS
 
 
 def _load_gitignore(folder_path: Path) -> Optional[pathspec.PathSpec]:
@@ -38,9 +32,9 @@ def _load_gitignore(folder_path: Path) -> Optional[pathspec.PathSpec]:
 
 
 def _should_skip(rel_path: str) -> bool:
-    normalized = rel_path.replace("\\", "/")
+    normalized = "/" + rel_path.replace("\\", "/")
     for pat in SKIP_PATTERNS:
-        if pat in normalized:
+        if ("/" + pat) in normalized:
             return True
     return False
 
@@ -65,49 +59,64 @@ def discover_doc_files(
         except Exception:
             pass
 
-    for file_path in folder_path.rglob("*"):
-        if not file_path.is_file():
-            continue
-
-        if not follow_symlinks and file_path.is_symlink():
-            continue
-        if file_path.is_symlink() and is_symlink_escape(root, file_path):
-            warnings.append(f"Skipped symlink escape: {file_path}")
-            continue
-
-        if not validate_path(root, file_path):
-            warnings.append(f"Skipped path traversal: {file_path}")
-            continue
-
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=follow_symlinks):
+        dir_path = Path(dirpath)
         try:
-            rel_path = file_path.relative_to(root).as_posix()
+            dir_rel = dir_path.relative_to(root).as_posix()
         except ValueError:
+            dirnames.clear()
             continue
 
-        if _should_skip(rel_path):
-            continue
+        # Prune skipped directories in-place so os.walk won't descend into them
+        dirnames[:] = [
+            d for d in dirnames
+            if not _should_skip(f"{dir_rel}/{d}/".lstrip("./"))
+            and not (gitignore_spec and gitignore_spec.match_file(f"{dir_rel}/{d}/".lstrip("./")))
+            and not (extra_spec and extra_spec.match_file(f"{dir_rel}/{d}/".lstrip("./")))
+        ]
 
-        if gitignore_spec and gitignore_spec.match_file(rel_path):
-            continue
+        for filename in filenames:
+            file_path = dir_path / filename
 
-        if extra_spec and extra_spec.match_file(rel_path):
-            continue
-
-        if is_secret_file(rel_path):
-            warnings.append(f"Skipped secret file: {rel_path}")
-            continue
-
-        ext = file_path.suffix.lower()
-        if ext not in ALL_EXTENSIONS:
-            continue
-
-        try:
-            if file_path.stat().st_size > max_size:
+            if not follow_symlinks and file_path.is_symlink():
                 continue
-        except OSError:
-            continue
+            if file_path.is_symlink() and is_symlink_escape(root, file_path):
+                warnings.append(f"Skipped symlink escape: {file_path}")
+                continue
 
-        files.append(file_path)
+            if not validate_path(root, file_path):
+                warnings.append(f"Skipped path traversal: {file_path}")
+                continue
+
+            rel_path = f"{dir_rel}/{filename}".lstrip("./") if dir_rel != "." else filename
+
+            if _should_skip(rel_path):
+                continue
+
+            if gitignore_spec and gitignore_spec.match_file(rel_path):
+                continue
+
+            if extra_spec and extra_spec.match_file(rel_path):
+                continue
+
+            if is_secret_file(rel_path):
+                warnings.append(f"Skipped secret file: {rel_path}")
+                continue
+
+            ext = file_path.suffix.lower()
+            if ext not in ALL_EXTENSIONS:
+                continue
+
+            try:
+                if file_path.stat().st_size > max_size:
+                    continue
+            except OSError:
+                continue
+
+            files.append(file_path)
+
+        if len(files) >= max_files:
+            break
 
     return files[:max_files], warnings
 
@@ -197,7 +206,7 @@ def index_local(
         owner = "local"
 
         store = DocStore(base_path=storage_path)
-        store.save_index(
+        saved = store.save_index(
             owner=owner,
             name=repo_name,
             sections=all_sections,
@@ -210,7 +219,7 @@ def index_local(
             "success": True,
             "repo": f"{owner}/{repo_name}",
             "folder_path": str(folder_path),
-            "indexed_at": store.load_index(owner, repo_name).indexed_at,
+            "indexed_at": saved.indexed_at,
             "file_count": len(parsed_files),
             "section_count": len(all_sections),
             "doc_types": doc_types,
