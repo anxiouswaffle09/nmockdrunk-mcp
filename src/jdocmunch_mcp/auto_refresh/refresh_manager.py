@@ -67,7 +67,7 @@ def _do_refresh(index, store: DocStore, owner: str, name: str) -> None:
     if not changeset.modified and not changeset.deleted:
         return
 
-    result = reindex_changed_files(
+    updated_index, sections_needing_ai = reindex_changed_files(
         index=index,
         source_path=source_path,
         modified=changeset.modified,
@@ -76,12 +76,9 @@ def _do_refresh(index, store: DocStore, owner: str, name: str) -> None:
         store=store,
     )
 
-    # reindex_changed_files returns (updated_index, sections_needing_ai)
-    if isinstance(result, tuple):
-        updated_index, sections_needing_ai = result
-        queue_ai_summarization(
-            owner=owner,
-            name=name,
-            sections_needing_ai=sections_needing_ai,
-            store=store,
-        )
+    queue_ai_summarization(
+        owner=owner,
+        name=name,
+        sections_needing_ai=sections_needing_ai,
+        store=store,
+    )

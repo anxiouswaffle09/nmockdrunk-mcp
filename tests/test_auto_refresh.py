@@ -180,7 +180,7 @@ class TestGitDetectorModifiedFile:
                 return r
 
             mock_run.side_effect = side_effect
-            _git_repo_cache[str(tmp_path)] = True
+            _git_repo_cache[str(tmp_path)] = (True, __import__("time").monotonic())
 
             result = detect_git_changes(
                 source_path=str(tmp_path),
@@ -209,7 +209,7 @@ class TestGitDetectorDeletedFile:
                 return r
 
             mock_run.side_effect = side_effect
-            _git_repo_cache[str(tmp_path)] = True
+            _git_repo_cache[str(tmp_path)] = (True, __import__("time").monotonic())
 
             result = detect_git_changes(
                 source_path=str(tmp_path),
@@ -241,7 +241,7 @@ class TestGitDetectorRenamedFile:
                 return r
 
             mock_run.side_effect = side_effect
-            _git_repo_cache[str(tmp_path)] = True
+            _git_repo_cache[str(tmp_path)] = (True, __import__("time").monotonic())
 
             result = detect_git_changes(
                 source_path=str(tmp_path),
@@ -275,7 +275,7 @@ class TestGitDetectorCommitDiff:
                 return r
 
             mock_run.side_effect = side_effect
-            _git_repo_cache[str(tmp_path)] = True
+            _git_repo_cache[str(tmp_path)] = (True, __import__("time").monotonic())
 
             result = detect_git_changes(
                 source_path=str(tmp_path),
@@ -711,7 +711,7 @@ class TestAutoRefreshIntegration:
             json.dump(data, f)
 
         _git_repo_cache.clear()
-        _git_repo_cache[str(docs_dir)] = True
+        _git_repo_cache[str(docs_dir)] = (True, __import__("time").monotonic())
 
         with patch("subprocess.run", side_effect=fake_run):
             auto_refresh(repo_id, storage_path)

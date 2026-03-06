@@ -32,7 +32,7 @@ READ_TOOLS = {
 
 
 async def _refresh(repo: str, storage_path: Optional[str]) -> None:
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, _auto_refresh, repo, storage_path)
 
 

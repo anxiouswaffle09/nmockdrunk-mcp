@@ -4,9 +4,10 @@ import hashlib
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 from ..parser import parse_file, preprocess_content
+from ..security import is_secret_file, DEFAULT_MAX_FILE_SIZE
 from ..storage.doc_store import DocIndex, DocStore, INDEX_VERSION
 from ..summarizer.batch_summarize import heading_summary, title_fallback
 
@@ -22,7 +23,7 @@ def reindex_changed_files(
     deleted: set,
     new_commit: Optional[str],
     store: DocStore,
-) -> DocIndex:
+) -> Tuple[DocIndex, list]:
     """Synchronous, no AI. Updates byte offsets and section structure.
 
     Preserves existing summaries for sections whose heading hasn't changed.
@@ -44,10 +45,14 @@ def reindex_changed_files(
     new_file_metas: dict = {}
 
     for rel_path in modified:
+        if is_secret_file(rel_path):
+            continue
         abs_path = Path(source_path) / rel_path
         if not abs_path.exists():
             continue
         try:
+            if abs_path.stat().st_size > DEFAULT_MAX_FILE_SIZE:
+                continue
             content = abs_path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
@@ -155,6 +160,6 @@ def reindex_changed_files(
             tmp_path.unlink()
         except OSError:
             pass
-        return index  # Preserve old index on disk failure
+        return index, []  # Preserve old index on disk failure
 
     return updated_index, sections_needing_ai

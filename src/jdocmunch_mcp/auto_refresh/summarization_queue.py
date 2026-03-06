@@ -6,7 +6,15 @@ import threading
 from ..storage.doc_store import DocStore
 from ..summarizer.batch_summarize import _create_summarizer, title_fallback
 
-_lock = threading.Lock()
+_ai_locks: dict = {}
+_ai_locks_lock = threading.Lock()
+
+
+def _get_ai_lock(repo_key: str) -> threading.Lock:
+    with _ai_locks_lock:
+        if repo_key not in _ai_locks:
+            _ai_locks[repo_key] = threading.Lock()
+        return _ai_locks[repo_key]
 
 
 def queue_ai_summarization(
@@ -17,12 +25,16 @@ def queue_ai_summarization(
 ) -> None:
     """Spawn a background daemon thread to run AI summarization.
 
-    Non-blocking. If sections_needing_ai is empty, does nothing.
-    The last writer wins on concurrent writes — no corruption, just occasional
-    summary re-generation on the next change.
+    Non-blocking. If another AI thread is already running for this repo,
+    skips — the next pre-call refresh will catch any remaining unsummarized
+    sections. Avoids duplicate API calls on rapid successive tool invocations.
     """
     if not sections_needing_ai:
         return
+
+    lock = _get_ai_lock(f"{owner}/{name}")
+    if not lock.acquire(blocking=False):
+        return  # AI thread already running for this repo
 
     def _run():
         try:
@@ -56,6 +68,8 @@ def queue_ai_summarization(
 
         except Exception:
             pass  # Never crash the background thread
+        finally:
+            lock.release()
 
     t = threading.Thread(target=_run, daemon=True)
     t.start()

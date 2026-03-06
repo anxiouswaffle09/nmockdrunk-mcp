@@ -1,20 +1,23 @@
 """Git-based change detection for auto-refresh."""
 
 import subprocess
+import time
 from pathlib import Path
 from typing import Optional
 
 from ._types import ChangeSet
 from ._scan import scan_doc_files
 
-# Cache is_git_repo results per path to avoid repeated subprocess calls
-_git_repo_cache: dict = {}
+# Cache is_git_repo results per path with a TTL to handle git init/rm after server start
+_git_repo_cache: dict = {}   # {path: (value, timestamp)}
+_GIT_CACHE_TTL = 300.0       # re-check after 5 minutes
 
 
 def is_git_repo(path: str) -> bool:
     """Check if path is inside a git working tree."""
-    if path in _git_repo_cache:
-        return _git_repo_cache[path]
+    cached = _git_repo_cache.get(path)
+    if cached is not None and (time.monotonic() - cached[1]) < _GIT_CACHE_TTL:
+        return cached[0]
     try:
         result = subprocess.run(
             ["git", "-C", path, "rev-parse", "--is-inside-work-tree"],
@@ -23,8 +26,39 @@ def is_git_repo(path: str) -> bool:
         val = result.returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired):
         val = False
-    _git_repo_cache[path] = val
+    _git_repo_cache[path] = (val, time.monotonic())
     return val
+
+
+def _get_repo_root(path: str) -> Optional[str]:
+    """Return the absolute path of the git repository root containing path."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", path, "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    return None
+
+
+def _strip_repo_prefix(paths: set, source_path: str, repo_root: str) -> set:
+    """Strip the repo-root prefix from git output paths.
+
+    git status/diff return paths relative to the repo root, but source_path
+    may be a subdirectory. Strip so paths match what the index stores.
+    Files outside source_path are silently dropped.
+    """
+    try:
+        prefix = Path(source_path).resolve().relative_to(Path(repo_root).resolve()).as_posix()
+    except ValueError:
+        return paths
+    if prefix == ".":
+        return paths
+    prefix_slash = prefix + "/"
+    return {p[len(prefix_slash):] for p in paths if p.startswith(prefix_slash)}
 
 
 def get_head_commit(path: str) -> Optional[str]:
@@ -109,13 +143,32 @@ def detect_git_changes(
 
     current_commit = get_head_commit(source_path)
 
+    # Compute repo root once — needed to strip the subdir prefix from git output paths.
+    # git status/diff return paths relative to the repo root, not source_path.
+    repo_root = _get_repo_root(source_path)
+
+    def _strip(paths: set) -> set:
+        if repo_root:
+            return _strip_repo_prefix(paths, source_path, repo_root)
+        return paths
+
+    def _strip_dict(d: dict) -> dict:
+        if not repo_root:
+            return d
+        result = {}
+        for k, v in d.items():
+            stripped = _strip_repo_prefix({k}, source_path, repo_root)
+            if stripped:
+                result[stripped.pop()] = v
+        return result
+
     # 1. Committed changes since last index
     if last_commit and current_commit and current_commit != last_commit:
-        diff_files = get_commit_diff_files(source_path, last_commit, current_commit)
+        diff_files = _strip(get_commit_diff_files(source_path, last_commit, current_commit))
         changed.update(diff_files)
 
     # 2. Uncommitted working tree changes
-    status = get_status_changes(source_path)
+    status = _strip_dict(get_status_changes(source_path))
     for rel_path, code in status.items():
         if code == "D":
             deleted.add(rel_path)
@@ -123,9 +176,9 @@ def detect_git_changes(
             changed.add(rel_path)
 
     # 3. Gitignored files → mtime fallback
+    # git ls-files returns paths relative to the -C directory (source_path), no stripping needed
     all_doc_files = scan_doc_files(source_path)
     git_known = set(status.keys())
-    # Also include files tracked by git (not just changed ones)
     if current_commit:
         try:
             result = subprocess.run(
