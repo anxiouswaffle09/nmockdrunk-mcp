@@ -82,7 +82,7 @@ class BatchSummarizer:
         return sections
 
     def _summarize_one_batch(self, batch: list):
-        prompt = self._build_prompt(batch)
+        prompt = _build_prompt(batch)
         try:
             response = self.client.messages.create(
                 model=self.model,
@@ -98,26 +98,6 @@ class BatchSummarizer:
                 if not sec.summary:
                     sec.summary = title_fallback(sec)
 
-    def _build_prompt(self, sections: list) -> str:
-        lines = [
-            "Summarize each documentation section in ONE short sentence (max 15 words).",
-            "Focus on what the section covers.",
-            "",
-            "Input:",
-        ]
-        for i, sec in enumerate(sections, 1):
-            snippet = sec.content[:200].replace("\n", " ")
-            lines.append(f"{i}. [{sec.title}] {snippet}")
-
-        lines.extend([
-            "",
-            "Output format: NUMBER. SUMMARY",
-            "Example: 1. Explains how to install the package via pip.",
-            "",
-            "Summaries:",
-        ])
-        return "\n".join(lines)
-
     def _parse_response(self, text: str, expected_count: int) -> list:
         summaries = [""] * expected_count
         for line in text.split("\n"):
@@ -132,79 +112,10 @@ class BatchSummarizer:
         return summaries
 
 
-@dataclass
-class GeminiBatchSummarizer:
-    """AI-based batch summarization using Google Gemini Flash (Tier 2)."""
-
-    model: str = "gemini-1.5-flash"
-    max_tokens_per_batch: int = 600
-
-    def __post_init__(self):
-        self.client = None
-        self._init_client()
-
-    def _init_client(self):
-        try:
-            import google.generativeai as genai
-            api_key = os.environ.get("GOOGLE_API_KEY")
-            if api_key:
-                genai.configure(api_key=api_key)
-                self.client = genai.GenerativeModel(self.model)
-        except ImportError:
-            self.client = None
-
-    def summarize_batch(self, sections: list, batch_size: int = 8) -> list:
-        if not self.client:
-            for sec in sections:
-                if not sec.summary:
-                    sec.summary = title_fallback(sec)
-            return sections
-
-        to_summarize = [s for s in sections if not s.summary]
-        for i in range(0, len(to_summarize), batch_size):
-            batch = to_summarize[i:i + batch_size]
-            self._summarize_one_batch(batch)
-        return sections
-
-    def _summarize_one_batch(self, batch: list):
-        prompt = self._build_prompt(batch)
-        try:
-            response = self.client.generate_content(prompt)
-            summaries = self._parse_response(response.text, len(batch))
-            for sec, summary in zip(batch, summaries):
-                sec.summary = summary if summary else title_fallback(sec)
-        except Exception:
-            for sec in batch:
-                if not sec.summary:
-                    sec.summary = title_fallback(sec)
-
-    def _build_prompt(self, sections: list) -> str:
-        return _build_prompt(sections)
-
-    def _parse_response(self, text: str, expected_count: int) -> list:
-        summaries = [""] * expected_count
-        for line in text.split("\n"):
-            line = line.strip()
-            if not line or "." not in line:
-                continue
-            parts = line.split(".", 1)
-            try:
-                num = int(parts[0].strip())
-                if 1 <= num <= expected_count:
-                    summaries[num - 1] = parts[1].strip()
-            except ValueError:
-                continue
-        return summaries
-
-
 def _create_summarizer():
-    """Return the appropriate summarizer. Priority: Anthropic > Gemini."""
+    """Return the appropriate summarizer."""
     if os.environ.get("ANTHROPIC_API_KEY"):
         s = BatchSummarizer()
-        if s.client:
-            return s
-    if os.environ.get("GOOGLE_API_KEY"):
-        s = GeminiBatchSummarizer()
         if s.client:
             return s
     return None
@@ -214,7 +125,7 @@ def summarize_sections(sections: list, use_ai: bool = True) -> list:
     """Three-tier summarization for doc sections.
 
     Tier 1: Heading text (always free — used as initial summary)
-    Tier 2: AI batch summarization (Claude Haiku or Gemini Flash)
+    Tier 2: AI batch summarization (Claude Haiku)
     Tier 3: title_fallback (always works)
     """
     # Tier 1: seed summary from heading

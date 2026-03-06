@@ -255,7 +255,7 @@ Files may not contain headings. Plain-text files without recognized heading patt
 Set `GITHUB_TOKEN` to increase GitHub API limits (5,000 requests/hour vs 60 unauthenticated).
 
 **AI summaries not working**
-Set `ANTHROPIC_API_KEY` (Claude Haiku) or `GOOGLE_API_KEY` (Gemini Flash). Anthropic takes priority if both are set. Without either key, summaries fall back to heading text or the title fallback.
+Set `ANTHROPIC_API_KEY` (Claude Haiku). Without this key, summaries fall back to heading text or the title fallback.
 
 **Stale index**
 Use `delete_index` followed by `index_local` or `index_repo` to force a clean re-index.

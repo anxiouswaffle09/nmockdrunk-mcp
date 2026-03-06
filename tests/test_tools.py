@@ -3,7 +3,7 @@
 import pytest
 from pathlib import Path
 
-from jdocmunch_mcp.tools.index_local import _should_skip
+from jdocmunch_mcp.auto_refresh._scan import _should_skip
 
 from jdocmunch_mcp.tools.index_local import index_local
 from jdocmunch_mcp.tools.list_repos import list_repos

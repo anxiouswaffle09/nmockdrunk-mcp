@@ -14,7 +14,6 @@ from ..security import (
 )
 from ..storage import DocStore
 from ..summarizer import summarize_sections
-from ._constants import SKIP_PATTERNS
 
 
 def _get_git_commit(path: str) -> Optional[str]:
@@ -48,14 +47,6 @@ def discover_doc_files(
     )
     root = folder_path.resolve()
     return [root / rel_path for rel_path in rel_paths], warnings
-
-
-def _should_skip(rel_path: str) -> bool:
-    normalized = "/" + rel_path.replace("\\", "/")
-    for pat in SKIP_PATTERNS:
-        if ("/" + pat) in normalized:
-            return True
-    return False
 
 
 def index_local(

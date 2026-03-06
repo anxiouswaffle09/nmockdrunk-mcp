@@ -37,7 +37,7 @@ def get_section(
     if not sec:
         return {"error": f"Section not found: {section_id}"}
 
-    content = store.get_section_content(owner, name, section_id)
+    content = store._read_section_bytes(owner, name, sec)
     if content is None:
         return {"error": f"Content not available for section: {section_id}"}
 

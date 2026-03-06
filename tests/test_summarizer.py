@@ -125,4 +125,4 @@ class TestSummarizeSections:
         result = summarize_sections([sec], use_ai=False)
         # summarize_sections seeds from heading for empty summaries
         # but shouldn't CLEAR an existing summary if heading_summary tier runs
-        assert result[0].summary != ""
+        assert result[0].summary == "Already summarized."

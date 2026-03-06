@@ -202,7 +202,7 @@ Optional `doc_path` filter scopes search to a single document. Results scoring z
 Section summaries are generated in three tiers, in order:
 
 1. **Heading text** — used directly as the summary (free, deterministic, often sufficient)
-2. **AI batch** — Claude Haiku (if `ANTHROPIC_API_KEY`) or Gemini Flash (if `GOOGLE_API_KEY`), in batches of 8 sections per prompt
+2. **AI batch** — Claude Haiku (if `ANTHROPIC_API_KEY`), in batches of 8 sections per prompt
 3. **Title fallback** — `"Section: {title}"` when AI is unavailable or fails
 
 ---
@@ -235,6 +235,5 @@ Search and retrieval tools return a `_meta` object with timing and token savings
 | ---------------------------- | -------------------------------------- |
 | `mcp>=1.0.0,<1.10.0`         | MCP server framework                   |
 | `httpx>=0.27.0`              | Async HTTP for GitHub API              |
-| `anthropic>=0.40.0`          | AI summarization via Claude Haiku      |
+| `anthropic>=0.40.0`          | AI summarization via Claude Haiku (optional: `pip install jdocmunch-mcp[anthropic]`) |
 | `pathspec>=0.12.0`           | `.gitignore` pattern matching          |
-| `google-generativeai>=0.8.0` | AI summarization via Gemini Flash (optional: `pip install jdocmunch-mcp[gemini]`) |

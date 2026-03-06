@@ -52,7 +52,7 @@ async def list_tools() -> list[Tool]:
                     },
                     "use_ai_summaries": {
                         "type": "boolean",
-                        "description": "Use AI to generate section summaries (requires ANTHROPIC_API_KEY or GOOGLE_API_KEY). When false, uses heading text.",
+                        "description": "Use AI to generate section summaries (requires ANTHROPIC_API_KEY). When false, uses heading text.",
                         "default": True
                     },
                     "extra_ignore_patterns": {

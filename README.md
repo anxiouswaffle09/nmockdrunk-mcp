@@ -358,7 +358,6 @@ See `SECURITY.md` for details.
 | ------------------------- | ----------------------------------------------------------------- | -------- |
 | `GITHUB_TOKEN`            | GitHub API auth                                                   | No       |
 | `ANTHROPIC_API_KEY`       | Section summaries via Claude Haiku                                | No       |
-| `GOOGLE_API_KEY`          | Section summaries via Gemini Flash                                | No       |
 | `DOC_INDEX_PATH`          | Custom cache path                                                 | No       |
 | `JDOCMUNCH_SHARE_SAVINGS` | Set to `0` to disable anonymous community token savings reporting | No       |
 

@@ -124,14 +124,16 @@ def reindex_changed_files(
     }
     updated_file_hashes.update(new_file_metas)
 
-    # Persist changed raw files to content cache
+    # Persist changed raw files to content cache (atomic per-file write)
     content_dir = store._content_dir(owner, name)
     for rel_path, content in new_raw_files.items():
         dest = store._safe_content_path(content_dir, rel_path)
         if dest:
             dest.parent.mkdir(parents=True, exist_ok=True)
-            with open(dest, "wb") as f:
+            tmp_dest = dest.with_name(dest.name + ".tmp")
+            with open(tmp_dest, "wb") as f:
                 f.write(content.encode("utf-8"))
+            tmp_dest.replace(dest)
 
     # Remove files that were deleted or are no longer indexable from content cache
     for rel_path in deleted | (modified - retained_modified):

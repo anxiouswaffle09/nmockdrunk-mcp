@@ -343,6 +343,22 @@ class DocStore:
 
         return raw.decode("utf-8", errors="replace")
 
+    def _read_section_bytes(self, owner: str, name: str, sec_dict: dict) -> Optional[str]:
+        """Byte-range read using an already-loaded section dict. Avoids a redundant load_index call."""
+        doc_path = sec_dict.get("doc_path", "")
+        byte_start = sec_dict.get("byte_start", 0)
+        byte_end = sec_dict.get("byte_end", 0)
+
+        file_path = self._safe_content_path(self._content_dir(owner, name), doc_path)
+        if not file_path or not file_path.exists():
+            return None
+
+        with open(file_path, "rb") as f:
+            f.seek(byte_start)
+            raw = f.read(byte_end - byte_start)
+
+        return raw.decode("utf-8", errors="replace")
+
     def list_repos(self) -> list:
         """List all indexed doc sets."""
         repos = []
