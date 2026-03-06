@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import shutil
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -32,6 +33,8 @@ class DocIndex:
     file_hashes: dict = field(default_factory=dict)
     source_path: Optional[str] = None          # Absolute path to original folder (local indexes only)
     last_indexed_commit: Optional[str] = None  # git HEAD hash at index time (None if not a git repo)
+    extra_ignore_patterns: list[str] = field(default_factory=list)
+    follow_symlinks: bool = False
 
     def get_section(self, section_id: str) -> Optional[dict]:
         """Find a section dict by ID."""
@@ -53,6 +56,9 @@ class DocIndex:
 
         Returns sections sorted by score descending, with content excluded.
         """
+        if not query.strip():
+            return []
+
         query_lower = query.lower()
         query_words = set(query_lower.split())
         scored = []
@@ -129,6 +135,41 @@ class DocStore:
             raise ValueError(f"Invalid {field_name}: {value!r}")
         return value
 
+    def _normalize_repo_component(self, value: str, fallback: str = "repo") -> str:
+        import re
+
+        normalized = re.sub(r"[^A-Za-z0-9._-]+", "-", value.strip())
+        normalized = re.sub(r"-+", "-", normalized).strip("-.")
+        return normalized or fallback
+
+    def _same_source_path(self, existing_path: Optional[str], candidate_path: Path) -> bool:
+        if not existing_path:
+            return False
+        try:
+            return Path(existing_path).resolve() == candidate_path.resolve()
+        except OSError:
+            return False
+
+    def resolve_local_repo(self, source_path: str) -> tuple[str, str]:
+        """Return a stable local repo key for a folder, avoiding basename collisions."""
+        folder_path = Path(source_path).expanduser().resolve()
+        owner = "local"
+        base_name = self._normalize_repo_component(folder_path.name, fallback="docs")
+        hashed_name = f"{base_name}-{hashlib.sha1(str(folder_path).encode('utf-8')).hexdigest()[:8]}"
+
+        candidate = base_name
+        existing = self.load_index(owner, candidate)
+        if existing and not self._same_source_path(existing.source_path, folder_path):
+            candidate = hashed_name
+
+        suffix = 2
+        while True:
+            existing = self.load_index(owner, candidate)
+            if not existing or self._same_source_path(existing.source_path, folder_path):
+                return owner, candidate
+            candidate = f"{hashed_name}-{suffix}"
+            suffix += 1
+
     def _index_path(self, owner: str, name: str) -> Path:
         o = self._safe_repo_component(owner, "owner")
         n = self._safe_repo_component(name, "name")
@@ -159,6 +200,8 @@ class DocStore:
         file_hashes: Optional[dict] = None,
         source_path: Optional[str] = None,
         last_indexed_commit: Optional[str] = None,
+        extra_ignore_patterns: Optional[list[str]] = None,
+        follow_symlinks: bool = False,
     ) -> "DocIndex":
         """Save index and raw files to storage atomically."""
         if file_hashes is None:
@@ -178,26 +221,62 @@ class DocStore:
             file_hashes=file_hashes,
             source_path=source_path,
             last_indexed_commit=last_indexed_commit,
+            extra_ignore_patterns=list(extra_ignore_patterns or []),
+            follow_symlinks=follow_symlinks,
         )
 
         index_path = self._index_path(owner, name)
         index_path.parent.mkdir(parents=True, exist_ok=True)
         tmp_path = index_path.with_suffix(".json.tmp")
-        with open(tmp_path, "w", encoding="utf-8") as f:
-            json.dump(self._index_to_dict(index), f, indent=2)
-        tmp_path.replace(index_path)
 
         # Cache raw files for byte-range reads
         content_dir = self._content_dir(owner, name)
-        content_dir.mkdir(parents=True, exist_ok=True)
+        content_dir.parent.mkdir(parents=True, exist_ok=True)
+        staged_content_dir = content_dir.parent / f".{name}.tmp-{uuid.uuid4().hex}"
+        backup_content_dir = content_dir.parent / f".{name}.bak-{uuid.uuid4().hex}"
+        staged_content_dir.mkdir(parents=True, exist_ok=False)
 
-        for doc_path, content in raw_files.items():
-            dest = self._safe_content_path(content_dir, doc_path)
-            if not dest:
-                raise ValueError(f"Unsafe doc path in raw_files: {doc_path}")
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            with open(dest, "wb") as f:
-                f.write(content.encode("utf-8"))
+        try:
+            for doc_path in raw_files:
+                dest = self._safe_content_path(staged_content_dir, doc_path)
+                if not dest:
+                    raise ValueError(f"Unsafe doc path in raw_files: {doc_path}")
+
+            for doc_path, content in raw_files.items():
+                dest = self._safe_content_path(staged_content_dir, doc_path)
+                if not dest:
+                    raise ValueError(f"Unsafe doc path in raw_files: {doc_path}")
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                with open(dest, "wb") as f:
+                    f.write(content.encode("utf-8"))
+
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                json.dump(self._index_to_dict(index), f, indent=2)
+
+            moved_old_content = False
+            promoted_new_content = False
+            try:
+                if content_dir.exists():
+                    content_dir.replace(backup_content_dir)
+                    moved_old_content = True
+                staged_content_dir.replace(content_dir)
+                promoted_new_content = True
+                tmp_path.replace(index_path)
+            except Exception:
+                if promoted_new_content and content_dir.exists():
+                    shutil.rmtree(content_dir)
+                if moved_old_content and backup_content_dir.exists():
+                    backup_content_dir.replace(content_dir)
+                raise
+            finally:
+                if backup_content_dir.exists():
+                    shutil.rmtree(backup_content_dir)
+        except Exception:
+            if staged_content_dir.exists():
+                shutil.rmtree(staged_content_dir)
+            if tmp_path.exists():
+                tmp_path.unlink()
+            raise
 
         return index
 
@@ -236,6 +315,8 @@ class DocStore:
             file_hashes=file_hashes,
             source_path=data.get("source_path"),
             last_indexed_commit=data.get("last_indexed_commit"),
+            extra_ignore_patterns=data.get("extra_ignore_patterns", []),
+            follow_symlinks=data.get("follow_symlinks", False),
         )
 
     def get_section_content(self, owner: str, name: str, section_id: str) -> Optional[str]:
@@ -310,6 +391,8 @@ class DocStore:
             "file_hashes": index.file_hashes,
             "source_path": index.source_path,
             "last_indexed_commit": index.last_indexed_commit,
+            "extra_ignore_patterns": index.extra_ignore_patterns,
+            "follow_symlinks": index.follow_symlinks,
         }
 
     def _resolve_repo(self, repo: str) -> tuple:
@@ -331,6 +414,11 @@ class DocStore:
         if len(matches) == 1:
             owner = matches[0].parent.name
             return owner, repo
+
+        suffix_matches = list(self.base_path.glob(f"*/{repo}-*.json"))
+        if len(suffix_matches) == 1:
+            owner = suffix_matches[0].parent.name
+            return owner, suffix_matches[0].stem
 
         # Default to local/name
         return "local", repo

@@ -154,6 +154,7 @@ Examples:
 * `local/myproject::guide.md::configuration#2`
 
 IDs remain stable across re-indexing when the file path, heading text, and heading level do not change.
+For local folders with colliding names, jDocMunch adds a short stable suffix to keep repo IDs distinct.
 
 ---
 
@@ -445,4 +446,3 @@ Until a commercial license is obtained, commercial use is not permitted.
 THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT.
 
 IN NO EVENT SHALL THE AUTHOR OR COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-

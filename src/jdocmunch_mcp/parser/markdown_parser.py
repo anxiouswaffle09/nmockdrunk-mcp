@@ -1,6 +1,5 @@
 """Markdown parser: ATX + setext heading splitter with byte offsets."""
 
-import os
 import re
 from pathlib import Path
 
@@ -65,6 +64,7 @@ from .sections import (
 _ATX_RE = re.compile(r"^(#{1,6})\s+(.+?)(?:\s+#+\s*)?$")
 _SETEXT_H1_RE = re.compile(r"^=+\s*$")
 _SETEXT_H2_RE = re.compile(r"^-+\s*$")
+_FENCE_OPEN_RE = re.compile(r"^[ ]{0,3}(`{3,}|~{3,})(.*)$")
 
 
 def parse_markdown(content: str, doc_path: str, repo: str) -> list:
@@ -72,7 +72,7 @@ def parse_markdown(content: str, doc_path: str, repo: str) -> list:
 
     Handles both ATX headings (# Heading) and setext headings (underline style).
     Tracks byte offsets per line. Content before the first heading becomes a
-    level-0 root section.
+    level-0 root section when the document has real preamble content.
 
     Args:
         content: Raw markdown text.
@@ -95,10 +95,18 @@ def parse_markdown(content: str, doc_path: str, repo: str) -> list:
 
     byte_cursor = 0
 
+    def _is_fence_close(line: str, fence_char: str, fence_len: int) -> bool:
+        if not fence_char:
+            return False
+        match = _FENCE_OPEN_RE.match(line)
+        return bool(match and match.group(1)[0] == fence_char and len(match.group(1)) >= fence_len and not match.group(2).strip())
+
     def _finalize_section(byte_end: int) -> None:
         """Close the current open section and append it to sections."""
         nonlocal current_slug
         body = "".join(current_lines)
+        if current_level == 0 and not sections and not body.strip():
+            return
         slug = current_slug or slugify(current_title)
         section_id = make_section_id(repo, doc_path, slug, current_level)
         sec = Section(
@@ -119,26 +127,51 @@ def parse_markdown(content: str, doc_path: str, repo: str) -> list:
         sec.tags = extract_tags(body)
         sections.append(sec)
 
-    prev_line: str = ""
+    prev_line_raw: str = ""
+    prev_line_stripped: str = ""
     prev_byte_start: int = 0
+    prev_can_be_setext: bool = False
+    in_fenced_code = False
+    fence_char = ""
+    fence_len = 0
 
     for i, line in enumerate(lines):
         line_bytes = len(line.encode("utf-8"))
         line_stripped = line.rstrip("\n").rstrip("\r")
+        opening_fence = None
+        closing_fence = False
+
+        if in_fenced_code:
+            closing_fence = _is_fence_close(line_stripped, fence_char, fence_len)
+        else:
+            opening_fence = _FENCE_OPEN_RE.match(line_stripped)
 
         # Check for setext heading (underline of previous line)
-        if i > 0 and _SETEXT_H1_RE.match(line_stripped) and prev_line.strip():
-            heading_text = prev_line.strip()
+        if (
+            i > 0
+            and not in_fenced_code
+            and opening_fence is None
+            and prev_can_be_setext
+            and _SETEXT_H1_RE.match(line_stripped)
+        ):
+            heading_text = prev_line_stripped.strip()
             heading_level = 1
-        elif i > 0 and _SETEXT_H2_RE.match(line_stripped) and prev_line.strip() and len(line_stripped) >= 2:
-            heading_text = prev_line.strip()
+        elif (
+            i > 0
+            and not in_fenced_code
+            and opening_fence is None
+            and prev_can_be_setext
+            and _SETEXT_H2_RE.match(line_stripped)
+            and len(line_stripped) >= 2
+        ):
+            heading_text = prev_line_stripped.strip()
             heading_level = 2
         else:
             heading_text = None
             heading_level = None
 
         # Check for ATX heading
-        atx_match = _ATX_RE.match(line_stripped)
+        atx_match = None if in_fenced_code or opening_fence else _ATX_RE.match(line_stripped)
         if atx_match and not heading_text:
             heading_text = atx_match.group(2).strip()
             heading_level = len(atx_match.group(1))
@@ -147,7 +180,7 @@ def parse_markdown(content: str, doc_path: str, repo: str) -> list:
             # Setext: the previous line was the heading text — remove it from current_lines
             if _SETEXT_H1_RE.match(line_stripped) or (_SETEXT_H2_RE.match(line_stripped) and len(line_stripped) >= 2):
                 # prev_line is heading text; finalize up to prev_byte_start
-                if current_lines:
+                if current_lines and prev_line_raw:
                     # Remove the last line (prev_line) from current_lines
                     current_lines = current_lines[:-1]
                 _finalize_section(byte_end=prev_byte_start)
@@ -157,7 +190,7 @@ def parse_markdown(content: str, doc_path: str, repo: str) -> list:
                 slug = slugify(heading_text)
                 current_slug = resolve_slug_collision(slug, used_slugs)
                 current_byte_start = prev_byte_start
-                current_lines = []
+                current_lines = [prev_line_raw, line]
             else:
                 # ATX: current line is the heading
                 _finalize_section(byte_end=byte_cursor)
@@ -171,8 +204,25 @@ def parse_markdown(content: str, doc_path: str, repo: str) -> list:
         else:
             current_lines.append(line)
 
-        prev_line = line_stripped
+        if opening_fence is not None:
+            fence_char = opening_fence.group(1)[0]
+            fence_len = len(opening_fence.group(1))
+            in_fenced_code = True
+        elif closing_fence:
+            in_fenced_code = False
+            fence_char = ""
+            fence_len = 0
+
+        prev_line_raw = line
+        prev_line_stripped = line_stripped
         prev_byte_start = byte_cursor
+        prev_can_be_setext = (
+            not in_fenced_code
+            and opening_fence is None
+            and not closing_fence
+            and bool(line_stripped.strip())
+            and _ATX_RE.match(line_stripped) is None
+        )
         byte_cursor += line_bytes
 
     # Finalize last open section

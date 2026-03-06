@@ -207,7 +207,7 @@ local/myproject::guide.md::quick-start#1
 
 IDs are returned by `get_toc`, `get_toc_tree`, `get_document_outline`, and `search_sections`. Pass them to `get_section` or `get_sections` to retrieve content.
 
-For local folders, `repo` defaults to `local/{folder-name}` — use the bare folder name when calling retrieval tools:
+For local folders, `repo` normally defaults to `local/{folder-name}`. If that name is already in use for a different folder, jDocMunch adds a short stable suffix. In the simple case you can still use the bare folder name when calling retrieval tools:
 
 ```
 index_local: { "path": "/home/user/docs" }
@@ -243,7 +243,7 @@ To disable, set `JDOCMUNCH_SHARE_SAVINGS=0` in your MCP server env:
 ## Troubleshooting
 
 **"Repo not found"**
-Check the repo identifier format. For local folders indexed as `local/myproject`, use `"repo": "myproject"` (bare name) or `"repo": "local/myproject"` (full form).
+Check the repo identifier format. For local folders indexed as `local/myproject`, use `"repo": "myproject"` (bare name) or `"repo": "local/myproject"` (full form). If the indexed repo has a suffix such as `local/myproject-ab12cd34`, use that exact repo value.
 
 **"No documentation files found"**
 The folder may not contain supported doc formats (`.md`, `.mdx`, `.txt`, `.rst`), or all files are excluded by skip patterns or `.gitignore`.

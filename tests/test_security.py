@@ -85,3 +85,9 @@ class TestShouldExcludeFile:
         f.write_text("SECRET=abc")
         result = should_exclude_file(f, tmp_path)
         assert result == "secret_file"
+
+    def test_binary_content_doc_file(self, tmp_path):
+        f = tmp_path / "weird.md"
+        f.write_bytes(b"# Title\n\x00\nBody\n")
+        result = should_exclude_file(f, tmp_path)
+        assert result == "binary_content"

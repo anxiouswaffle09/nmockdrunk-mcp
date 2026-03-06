@@ -45,8 +45,9 @@ def parse_rst(content: str, doc_path: str, repo: str) -> list:
     """Parse an RST file into Section objects.
 
     Detects both overline+title+underline and title+underline heading styles.
-    Content before the first heading becomes a level-0 root section.
-    Heading lines are included in the section's byte range and content body.
+    Content before the first heading becomes a level-0 root section when the
+    document has real preamble content. Heading lines are included in the
+    section's byte range and content body.
 
     Args:
         content: Raw RST content.
@@ -87,6 +88,8 @@ def parse_rst(content: str, doc_path: str, repo: str) -> list:
 
     def _finalize_section(byte_end: int) -> None:
         body = "".join(current_lines)
+        if current_level == 0 and not sections and not body.strip():
+            return
         slug = current_slug or slugify(current_title)
         section_id = make_section_id(repo, doc_path, slug, current_level)
         sec = Section(

@@ -84,6 +84,34 @@ class TestIndexLocal:
         assert result["success"] is True
         assert ".txt" in result["doc_types"]
 
+    def test_same_basename_folders_get_distinct_repo_ids(self, tmp_path):
+        first = tmp_path / "one" / "docs"
+        second = tmp_path / "two" / "docs"
+        first.mkdir(parents=True)
+        second.mkdir(parents=True)
+        (first / "a.md").write_text("# One\n\nBody.\n", encoding="utf-8")
+        (second / "b.md").write_text("# Two\n\nBody.\n", encoding="utf-8")
+
+        first_result = index_local(path=str(first), use_ai_summaries=False, storage_path=str(tmp_path / "store"))
+        second_result = index_local(path=str(second), use_ai_summaries=False, storage_path=str(tmp_path / "store"))
+
+        assert first_result["success"] is True
+        assert second_result["success"] is True
+        assert first_result["repo"] != second_result["repo"]
+        assert second_result["repo"].startswith("local/docs")
+
+    def test_skips_binary_markdown_content(self, tmp_path):
+        docs = tmp_path / "docs"
+        docs.mkdir()
+        (docs / "good.md").write_text("# Good\n\nBody.\n", encoding="utf-8")
+        (docs / "weird.md").write_bytes(b"# Weird\n\x00\nBody\n")
+
+        result = index_local(path=str(docs), use_ai_summaries=False, storage_path=str(tmp_path / "store"))
+
+        assert result["success"] is True
+        assert result["file_count"] == 1
+        assert result["files"] == ["good.md"]
+
 
 class TestListRepos:
     def test_lists_indexed(self, indexed_repo):
@@ -171,6 +199,52 @@ class TestGetDocumentOutline:
         )
         assert "error" in result
 
+    def test_ambiguous_partial_match_returns_error(self, tmp_path):
+        docs = tmp_path / "docs"
+        (docs / "one").mkdir(parents=True)
+        (docs / "two").mkdir(parents=True)
+        (docs / "one" / "guide.md").write_text("# One Guide\n", encoding="utf-8")
+        (docs / "two" / "guide.md").write_text("# Two Guide\n", encoding="utf-8")
+
+        indexed = index_local(path=str(docs), use_ai_summaries=False, storage_path=str(tmp_path / "store"))
+        result = get_document_outline(
+            repo=indexed["repo"],
+            doc_path="guide.md",
+            storage_path=str(tmp_path / "store"),
+        )
+
+        assert "error" in result
+        assert "matches" in result
+
+    def test_false_positive_suffix_match_rejected(self, tmp_path):
+        docs = tmp_path / "docs"
+        docs.mkdir()
+        (docs / "myguide.md").write_text("# Mine\n", encoding="utf-8")
+
+        indexed = index_local(path=str(docs), use_ai_summaries=False, storage_path=str(tmp_path / "store"))
+        result = get_document_outline(
+            repo=indexed["repo"],
+            doc_path="guide.md",
+            storage_path=str(tmp_path / "store"),
+        )
+
+        assert "error" in result
+
+    def test_unique_basename_match_still_works(self, tmp_path):
+        docs = tmp_path / "docs"
+        (docs / "nested").mkdir(parents=True)
+        (docs / "nested" / "guide.md").write_text("# Guide\n", encoding="utf-8")
+
+        indexed = index_local(path=str(docs), use_ai_summaries=False, storage_path=str(tmp_path / "store"))
+        result = get_document_outline(
+            repo=indexed["repo"],
+            doc_path="guide.md",
+            storage_path=str(tmp_path / "store"),
+        )
+
+        assert result["doc_path"] == "nested/guide.md"
+        assert result["section_count"] >= 1
+
 
 class TestSearchSections:
     def test_basic_search(self, indexed_repo):
@@ -211,6 +285,15 @@ class TestSearchSections:
             storage_path=storage_path,
         )
         assert "tokens_saved" in result["_meta"]
+
+    def test_blank_query_returns_no_results(self, indexed_repo):
+        repo_id, storage_path = indexed_repo
+        result = search_sections(
+            repo=repo_id,
+            query="",
+            storage_path=storage_path,
+        )
+        assert result["results"] == []
 
 
 class TestGetSection:

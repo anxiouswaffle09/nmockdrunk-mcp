@@ -173,4 +173,7 @@ def should_exclude_file(
     if check_binary and is_binary_extension(rel_path):
         return "binary_extension"
 
+    if check_binary and is_binary_file(file_path):
+        return "binary_content"
+
     return None

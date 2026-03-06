@@ -134,6 +134,24 @@ class TestMarkdownParser:
         for sec in sections:
             assert sec.content_hash != ""
 
+    def test_heading_first_has_no_empty_root_section(self):
+        sections = parse_markdown("# Title\n\nBody.\n", "doc.md", "repo")
+        assert [s.title for s in sections] == ["Title"]
+        assert all(s.level != 0 for s in sections)
+
+    def test_setext_section_content_includes_heading_lines(self):
+        content = "Title\n=====\n\nBody.\n"
+        sections = parse_markdown(content, "doc.md", "repo")
+        assert len(sections) == 1
+        assert sections[0].content.startswith("Title\n=====")
+
+    def test_fenced_code_headings_ignored(self):
+        content = "```\n# not heading\n```\n\n# Real\n\nBody.\n"
+        sections = parse_markdown(content, "doc.md", "repo")
+        titles = [s.title for s in sections]
+        assert "not heading" not in titles
+        assert "Real" in titles
+
 
 class TestTextParser:
     def test_paragraphs(self):
@@ -305,6 +323,13 @@ class TestAsciiDocParser:
         assert "----" not in titles
         assert "code block" not in titles
 
+    def test_heading_like_line_inside_block_not_heading(self):
+        content = "----\n= not heading\n----\n\n== Section\n\nBody.\n"
+        sections = parse_asciidoc(content, "doc.adoc", "repo")
+        titles = [s.title for s in sections]
+        assert "not heading" not in titles
+        assert "Section" in titles
+
     def test_attribute_entries_in_preamble(self):
         content = "= Doc\n:author: Test\n:version: 1.0\n\n== Section\n\nBody.\n"
         sections = parse_asciidoc(content, "doc.adoc", "repo")
@@ -436,6 +461,11 @@ class TestNotebookParser:
     def test_invalid_json_returns_empty(self):
         assert convert_notebook("not json") == ""
 
+    def test_invalid_notebook_parses_to_no_sections(self):
+        text = preprocess_content("not json", "broken.ipynb")
+        sections = parse_file(text, "broken.ipynb", "myrepo")
+        assert sections == []
+
     def test_source_as_list(self):
         nb = '{"metadata":{},"nbformat":4,"cells":[{"cell_type":"markdown","source":["# T","itle\\n","\\nBody."]}]}'
         text = convert_notebook(nb)
@@ -539,6 +569,12 @@ class TestHTMLParser:
         text = convert_html(html)
         assert "pip install pkg" in text
         assert "```" in text
+
+    def test_list_items_render_as_bullets(self):
+        html = "<ul><li>one</li><li>two</li></ul>"
+        text = convert_html(html)
+        assert "- one" in text
+        assert "- two" in text
 
     def test_char_refs_decoded(self):
         html = "<h1>Caf&eacute;</h1><p>R&eacute;sum&eacute;</p>"

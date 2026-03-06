@@ -1,13 +1,17 @@
-"""mtime+size fallback change detection for non-git repos and gitignored files."""
+"""mtime+size fallback change detection for non-git repos and filtered files."""
 
 from pathlib import Path
-from typing import Optional
 
 from ._types import ChangeSet
 from ._scan import scan_doc_files
 
 
-def detect_mtime_changes(source_path: str, doc_file_metas: dict) -> ChangeSet:
+def detect_mtime_changes(
+    source_path: str,
+    doc_file_metas: dict,
+    extra_ignore_patterns: list[str] | None = None,
+    follow_symlinks: bool = False,
+) -> ChangeSet:
     """Detect changes by comparing mtime+size against stored metadata.
 
     doc_file_metas: {rel_path: {"sha256": ..., "mtime": float, "size": int}}
@@ -17,9 +21,17 @@ def detect_mtime_changes(source_path: str, doc_file_metas: dict) -> ChangeSet:
     deleted: set = set()
     root = Path(source_path)
 
-    current_files = scan_doc_files(source_path)
+    current_files = scan_doc_files(
+        source_path,
+        extra_ignore_patterns=extra_ignore_patterns,
+        follow_symlinks=follow_symlinks,
+    )
 
     for rel_path, meta in doc_file_metas.items():
+        if rel_path not in current_files:
+            deleted.add(rel_path)
+            continue
+
         abs_path = root / rel_path
         if not abs_path.exists():
             deleted.add(rel_path)

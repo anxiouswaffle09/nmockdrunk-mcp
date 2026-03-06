@@ -23,6 +23,7 @@ from jdocmunch_mcp.tools.index_local import index_local
 from jdocmunch_mcp.tools.get_section import get_section
 from jdocmunch_mcp.tools.search_sections import search_sections
 from jdocmunch_mcp.tools.get_toc import get_toc
+from jdocmunch_mcp.security import DEFAULT_MAX_FILE_SIZE
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -428,6 +429,47 @@ class TestIncrementalReindexDeleted:
         assert len(readme_sections) == 0
         assert "README.md" not in updated_index.doc_paths
 
+    def test_modified_file_that_becomes_excluded_is_removed_cleanly(self, tmp_path):
+        store, index, docs_dir = _make_store_with_index(tmp_path)
+
+        content_path = Path(str(tmp_path / "store")) / "local" / "docs" / "README.md"
+        assert content_path.exists()
+
+        (docs_dir / "README.md").write_text("# Root\n\n" + ("x" * (DEFAULT_MAX_FILE_SIZE + 10)), encoding="utf-8")
+
+        updated_index, _ = reindex_changed_files(
+            index=index,
+            source_path=str(docs_dir),
+            modified={"README.md"},
+            deleted=set(),
+            new_commit=None,
+            store=store,
+        )
+
+        assert "README.md" not in updated_index.doc_paths
+        assert "README.md" not in updated_index.file_hashes
+        assert not any(s.get("doc_path") == "README.md" for s in updated_index.sections)
+        assert not content_path.exists()
+
+
+class TestIncrementalReindexDocTypes:
+    def test_doc_types_recomputed_after_new_extension_added(self, tmp_path):
+        store, index, docs_dir = _make_store_with_index(tmp_path)
+        (docs_dir / "notes.txt").write_text("Paragraph one.\n\nParagraph two.\n", encoding="utf-8")
+
+        updated_index, _ = reindex_changed_files(
+            index=index,
+            source_path=str(docs_dir),
+            modified={"notes.txt"},
+            deleted=set(),
+            new_commit=None,
+            store=store,
+        )
+
+        assert updated_index.doc_types[".md"] == 1
+        assert updated_index.doc_types[".txt"] == 1
+        assert "notes.txt" in updated_index.doc_paths
+
 
 class TestAtomicWrite:
     def test_no_tmp_files_after_successful_reindex(self, tmp_path):
@@ -659,6 +701,79 @@ class TestAutoRefreshIntegration:
         )
         titles = [r["title"] for r in search_result["results"]]
         assert any("BrandNewUniqueSection" in t for t in titles)
+
+    def test_auto_refresh_ignored_file_stays_ignored(self, tmp_path):
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+        (docs_dir / ".gitignore").write_text("ignored.md\n", encoding="utf-8")
+        (docs_dir / "guide.md").write_text("# Guide\n\nBody.\n", encoding="utf-8")
+
+        storage_path = str(tmp_path / "store")
+        result = index_local(
+            path=str(docs_dir),
+            use_ai_summaries=False,
+            storage_path=storage_path,
+        )
+        assert result["success"]
+
+        (docs_dir / "ignored.md").write_text("# Ignored\n\nShould stay hidden.\n", encoding="utf-8")
+        auto_refresh(result["repo"], storage_path)
+
+        toc = get_toc(repo=result["repo"], storage_path=storage_path)
+        doc_paths = {sec["doc_path"] for sec in toc["sections"]}
+        assert "ignored.md" not in doc_paths
+
+    def test_auto_refresh_skips_symlink_escape(self, tmp_path):
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+        outside_dir = tmp_path / "outside"
+        outside_dir.mkdir()
+        (docs_dir / "guide.md").write_text("# Guide\n\nBody.\n", encoding="utf-8")
+        (outside_dir / "leak.md").write_text("# Leak\n\nOutside root.\n", encoding="utf-8")
+
+        storage_path = str(tmp_path / "store")
+        result = index_local(
+            path=str(docs_dir),
+            use_ai_summaries=False,
+            storage_path=storage_path,
+        )
+        assert result["success"]
+
+        (docs_dir / "link.md").symlink_to(outside_dir / "leak.md")
+        auto_refresh(result["repo"], storage_path)
+
+        toc = get_toc(repo=result["repo"], storage_path=storage_path)
+        titles = [sec["title"] for sec in toc["sections"]]
+        doc_paths = {sec["doc_path"] for sec in toc["sections"]}
+        assert "Leak" not in titles
+        assert "link.md" not in doc_paths
+
+    def test_auto_refresh_removes_binary_markdown_file(self, tmp_path):
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+        (docs_dir / "guide.md").write_text("# Guide\n\nBody.\n", encoding="utf-8")
+
+        storage_path = str(tmp_path / "store")
+        result = index_local(
+            path=str(docs_dir),
+            use_ai_summaries=False,
+            storage_path=storage_path,
+        )
+        assert result["success"]
+
+        cached = Path(storage_path) / "local" / "docs" / "guide.md"
+        assert cached.exists()
+
+        (docs_dir / "guide.md").write_bytes(b"# Guide\n\x00\nBody\n")
+        auto_refresh(result["repo"], storage_path)
+
+        store = DocStore(base_path=storage_path)
+        refreshed = store.load_index("local", Path(result["repo"]).name)
+        assert refreshed is not None
+        assert "guide.md" not in refreshed.doc_paths
+        assert "guide.md" not in refreshed.file_hashes
+        assert not any(s.get("doc_path") == "guide.md" for s in refreshed.sections)
+        assert not cached.exists()
 
     def test_auto_refresh_git_pull_simulation(self, tmp_path):
         """Simulate a git pull: index at commit A, advance HEAD to commit B, auto_refresh detects it."""

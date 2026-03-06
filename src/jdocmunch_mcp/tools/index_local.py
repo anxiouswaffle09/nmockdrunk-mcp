@@ -1,20 +1,15 @@
 """Index local folder tool — walk, parse, summarize, save."""
 
 import hashlib
-import os
 import subprocess
 import time
 from pathlib import Path
 from typing import Optional
 
-import pathspec
-
-from ..parser import parse_file, preprocess_content, ALL_EXTENSIONS
+from ..auto_refresh._scan import discover_doc_rel_paths
+from ..parser import parse_file, preprocess_content
 from ..security import (
     validate_path,
-    is_symlink_escape,
-    is_secret_file,
-    should_exclude_file,
     DEFAULT_MAX_FILE_SIZE,
 )
 from ..storage import DocStore
@@ -35,25 +30,6 @@ def _get_git_commit(path: str) -> Optional[str]:
     return None
 
 
-def _load_gitignore(folder_path: Path) -> Optional[pathspec.PathSpec]:
-    gitignore_path = folder_path / ".gitignore"
-    if gitignore_path.is_file():
-        try:
-            content = gitignore_path.read_text(encoding="utf-8", errors="replace")
-            return pathspec.PathSpec.from_lines("gitignore", content.splitlines())
-        except Exception:
-            pass
-    return None
-
-
-def _should_skip(rel_path: str) -> bool:
-    normalized = "/" + rel_path.replace("\\", "/")
-    for pat in SKIP_PATTERNS:
-        if ("/" + pat) in normalized:
-            return True
-    return False
-
-
 def discover_doc_files(
     folder_path: Path,
     max_files: int = 500,
@@ -62,78 +38,24 @@ def discover_doc_files(
     follow_symlinks: bool = False,
 ) -> tuple:
     """Discover doc files (.md, .txt, .rst) with security filtering."""
-    files = []
-    warnings = []
+    rel_paths, warnings = discover_doc_rel_paths(
+        source_path=folder_path,
+        max_files=max_files,
+        max_size=max_size,
+        extra_ignore_patterns=extra_ignore_patterns,
+        follow_symlinks=follow_symlinks,
+        collect_warnings=True,
+    )
     root = folder_path.resolve()
+    return [root / rel_path for rel_path in rel_paths], warnings
 
-    gitignore_spec = _load_gitignore(root)
-    extra_spec = None
-    if extra_ignore_patterns:
-        try:
-            extra_spec = pathspec.PathSpec.from_lines("gitignore", extra_ignore_patterns)
-        except Exception:
-            pass
 
-    for dirpath, dirnames, filenames in os.walk(root, followlinks=follow_symlinks):
-        dir_path = Path(dirpath)
-        try:
-            dir_rel = dir_path.relative_to(root).as_posix()
-        except ValueError:
-            dirnames.clear()
-            continue
-
-        # Prune skipped directories in-place so os.walk won't descend into them
-        dirnames[:] = [
-            d for d in dirnames
-            if not _should_skip(f"{dir_rel}/{d}/".lstrip("./"))
-            and not (gitignore_spec and gitignore_spec.match_file(f"{dir_rel}/{d}/".lstrip("./")))
-            and not (extra_spec and extra_spec.match_file(f"{dir_rel}/{d}/".lstrip("./")))
-        ]
-
-        for filename in filenames:
-            file_path = dir_path / filename
-
-            if not follow_symlinks and file_path.is_symlink():
-                continue
-            if file_path.is_symlink() and is_symlink_escape(root, file_path):
-                warnings.append(f"Skipped symlink escape: {file_path}")
-                continue
-
-            if not validate_path(root, file_path):
-                warnings.append(f"Skipped path traversal: {file_path}")
-                continue
-
-            rel_path = f"{dir_rel}/{filename}".lstrip("./") if dir_rel != "." else filename
-
-            if _should_skip(rel_path):
-                continue
-
-            if gitignore_spec and gitignore_spec.match_file(rel_path):
-                continue
-
-            if extra_spec and extra_spec.match_file(rel_path):
-                continue
-
-            if is_secret_file(rel_path):
-                warnings.append(f"Skipped secret file: {rel_path}")
-                continue
-
-            ext = file_path.suffix.lower()
-            if ext not in ALL_EXTENSIONS:
-                continue
-
-            try:
-                if file_path.stat().st_size > max_size:
-                    continue
-            except OSError:
-                continue
-
-            files.append(file_path)
-
-        if len(files) >= max_files:
-            break
-
-    return files[:max_files], warnings
+def _should_skip(rel_path: str) -> bool:
+    normalized = "/" + rel_path.replace("\\", "/")
+    for pat in SKIP_PATTERNS:
+        if ("/" + pat) in normalized:
+            return True
+    return False
 
 
 def index_local(
@@ -164,6 +86,9 @@ def index_local(
         return {"success": False, "error": f"Path is not a directory: {path}"}
 
     warnings = []
+    store = DocStore(base_path=storage_path)
+    owner, repo_name = store.resolve_local_repo(str(folder_path))
+    repo_id = f"{owner}/{repo_name}"
 
     try:
         doc_files, discover_warnings = discover_doc_files(
@@ -197,9 +122,6 @@ def index_local(
                 continue
 
             ext = file_path.suffix.lower()
-            repo_name = folder_path.name
-            owner = "local"
-            repo_id = f"{owner}/{repo_name}"
 
             try:
                 parsed_content = preprocess_content(content, rel_path)
@@ -217,9 +139,6 @@ def index_local(
             return {"success": False, "error": "No sections extracted from files"}
 
         all_sections = summarize_sections(all_sections, use_ai=use_ai_summaries)
-
-        repo_name = folder_path.name
-        owner = "local"
 
         # Build file_hashes with mtime+size for auto-refresh change detection
         file_hashes = {}
@@ -241,7 +160,6 @@ def index_local(
 
         last_commit = _get_git_commit(str(folder_path))
 
-        store = DocStore(base_path=storage_path)
         saved = store.save_index(
             owner=owner,
             name=repo_name,
@@ -251,6 +169,8 @@ def index_local(
             file_hashes=file_hashes,
             source_path=str(folder_path),
             last_indexed_commit=last_commit,
+            extra_ignore_patterns=extra_ignore_patterns,
+            follow_symlinks=follow_symlinks,
         )
 
         latency_ms = int((time.time() - t0) * 1000)

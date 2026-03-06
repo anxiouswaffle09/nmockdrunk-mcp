@@ -26,7 +26,7 @@ _SKIP_TAGS = frozenset([
 _BLOCK_TAGS = frozenset([
     "p", "div", "section", "article", "main", "blockquote",
     "ul", "ol", "dl", "table", "thead", "tbody", "tfoot",
-    "tr", "th", "td", "dd", "dt", "li",
+    "tr", "th", "td", "dd", "dt",
 ])
 
 _WHITESPACE_RE = re.compile(r"[ \t]+")
@@ -59,10 +59,10 @@ class _HTMLToTextParser(HTMLParser):
             self._parts.append("\n\n```\n")
         elif tag == "code" and not self._in_pre:
             self._parts.append("`")
-        elif tag in _BLOCK_TAGS:
-            self._parts.append("\n\n")
         elif tag == "li":
             self._parts.append("\n- ")
+        elif tag in _BLOCK_TAGS:
+            self._parts.append("\n\n")
         elif tag == "hr":
             self._parts.append("\n\n---\n\n")
 

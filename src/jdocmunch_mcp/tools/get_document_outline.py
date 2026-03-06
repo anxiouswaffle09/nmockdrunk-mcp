@@ -1,6 +1,7 @@
 """Section hierarchy for one file (no content)."""
 
 import time
+from pathlib import Path
 from typing import Optional
 
 from ..storage import DocStore
@@ -21,16 +22,44 @@ def get_document_outline(
     if not index:
         return {"error": f"Repo not found: {repo}"}
 
-    doc_sections = [
-        s for s in index.sections if s.get("doc_path") == doc_path
-    ]
+    normalized_doc_path = doc_path.strip()
+    if not normalized_doc_path:
+        return {"error": "Document path must not be empty"}
+
+    matched_doc_path = normalized_doc_path
+    doc_sections = [s for s in index.sections if s.get("doc_path") == matched_doc_path]
 
     if not doc_sections:
-        # Try partial match
-        doc_sections = [
-            s for s in index.sections
-            if s.get("doc_path", "").endswith(doc_path) or doc_path in s.get("doc_path", "")
-        ]
+        normalized_path_query = normalized_doc_path.replace("\\", "/").strip("/")
+        use_suffix_match = "/" in normalized_path_query
+        candidate_paths = sorted({
+            s.get("doc_path", "")
+            for s in index.sections
+            if s.get("doc_path")
+            and (
+                (
+                    use_suffix_match
+                    and (
+                        s.get("doc_path", "") == normalized_path_query
+                        or s.get("doc_path", "").endswith(f"/{normalized_path_query}")
+                    )
+                )
+                or (
+                    not use_suffix_match
+                    and Path(s.get("doc_path", "")).name == normalized_path_query
+                )
+            )
+        })
+        if len(candidate_paths) > 1:
+            return {
+                "error": f"Document path is ambiguous: {doc_path}",
+                "matches": candidate_paths,
+            }
+        if candidate_paths:
+            matched_doc_path = candidate_paths[0]
+            doc_sections = [
+                s for s in index.sections if s.get("doc_path") == matched_doc_path
+            ]
 
     if not doc_sections:
         return {"error": f"Document not found: {doc_path}"}
@@ -59,7 +88,7 @@ def get_document_outline(
     latency_ms = int((time.time() - t0) * 1000)
     return {
         "repo": f"{owner}/{name}",
-        "doc_path": doc_path,
+        "doc_path": matched_doc_path,
         "sections": outline,
         "section_count": len(outline),
         "_meta": {

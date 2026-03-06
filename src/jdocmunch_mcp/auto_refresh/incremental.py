@@ -10,6 +10,7 @@ from ..parser import parse_file, preprocess_content
 from ..security import is_secret_file, DEFAULT_MAX_FILE_SIZE
 from ..storage.doc_store import DocIndex, DocStore, INDEX_VERSION
 from ..summarizer.batch_summarize import heading_summary, title_fallback
+from ._scan import scan_doc_files
 
 
 def _file_hash(content: str) -> str:
@@ -23,6 +24,8 @@ def reindex_changed_files(
     deleted: set,
     new_commit: Optional[str],
     store: DocStore,
+    extra_ignore_patterns: list[str] | None = None,
+    follow_symlinks: bool = False,
 ) -> Tuple[DocIndex, list]:
     """Synchronous, no AI. Updates byte offsets and section structure.
 
@@ -31,6 +34,11 @@ def reindex_changed_files(
     """
     owner, name = index.owner, index.name
     repo_id = f"{owner}/{name}"
+    current_files = scan_doc_files(
+        source_path,
+        extra_ignore_patterns=extra_ignore_patterns,
+        follow_symlinks=follow_symlinks,
+    )
 
     files_to_remove = deleted | modified
 
@@ -43,9 +51,10 @@ def reindex_changed_files(
     new_sections_objs = []
     new_raw_files: dict = {}
     new_file_metas: dict = {}
+    retained_modified = set()
 
     for rel_path in modified:
-        if is_secret_file(rel_path):
+        if rel_path not in current_files or is_secret_file(rel_path):
             continue
         abs_path = Path(source_path) / rel_path
         if not abs_path.exists():
@@ -62,6 +71,8 @@ def reindex_changed_files(
             sections = parse_file(parsed_content, rel_path, repo_id)
         except Exception:
             continue
+        if not sections:
+            continue
 
         # Reuse cached summaries for headings that haven't changed
         old_summaries = {
@@ -75,6 +86,7 @@ def reindex_changed_files(
 
         new_sections_objs.extend(sections)
         new_raw_files[rel_path] = parsed_content
+        retained_modified.add(rel_path)
 
         try:
             stat = abs_path.stat()
@@ -121,18 +133,22 @@ def reindex_changed_files(
             with open(dest, "wb") as f:
                 f.write(content.encode("utf-8"))
 
-    # Remove deleted files from content cache
-    for rel_path in deleted:
+    # Remove files that were deleted or are no longer indexable from content cache
+    for rel_path in deleted | (modified - retained_modified):
         dest = store._safe_content_path(content_dir, rel_path)
         if dest and dest.exists():
             dest.unlink()
 
     # Build updated doc_paths list
-    updated_doc_paths = [p for p in index.doc_paths if p not in deleted]
-    for rel_path in modified:
-        if rel_path not in updated_doc_paths and rel_path in new_raw_files:
+    updated_doc_paths = [p for p in index.doc_paths if p not in files_to_remove]
+    for rel_path in retained_modified:
+        if rel_path not in updated_doc_paths:
             updated_doc_paths.append(rel_path)
     updated_doc_paths = sorted(updated_doc_paths)
+    updated_doc_types: dict[str, int] = {}
+    for rel_path in updated_doc_paths:
+        ext = Path(rel_path).suffix.lower()
+        updated_doc_types[ext] = updated_doc_types.get(ext, 0) + 1
 
     updated_index = DocIndex(
         repo=index.repo,
@@ -140,12 +156,14 @@ def reindex_changed_files(
         name=name,
         indexed_at=datetime.now().isoformat(),
         doc_paths=updated_doc_paths,
-        doc_types=index.doc_types,
+        doc_types=updated_doc_types,
         sections=all_sections_dicts,
         index_version=INDEX_VERSION,
         file_hashes=updated_file_hashes,
         source_path=source_path,
         last_indexed_commit=new_commit or index.last_indexed_commit,
+        extra_ignore_patterns=list(extra_ignore_patterns or []),
+        follow_symlinks=follow_symlinks,
     )
 
     # Atomic write

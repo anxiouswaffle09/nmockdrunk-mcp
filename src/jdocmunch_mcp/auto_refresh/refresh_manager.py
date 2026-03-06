@@ -57,11 +57,15 @@ def _do_refresh(index, store: DocStore, owner: str, name: str) -> None:
             source_path=source_path,
             last_commit=index.last_indexed_commit,
             indexed_file_metas=index.file_hashes,
+            extra_ignore_patterns=index.extra_ignore_patterns,
+            follow_symlinks=index.follow_symlinks,
         )
     else:
         changeset = detect_mtime_changes(
             source_path=source_path,
             doc_file_metas=index.file_hashes,
+            extra_ignore_patterns=index.extra_ignore_patterns,
+            follow_symlinks=index.follow_symlinks,
         )
 
     if not changeset.modified and not changeset.deleted:
@@ -74,6 +78,8 @@ def _do_refresh(index, store: DocStore, owner: str, name: str) -> None:
         deleted=changeset.deleted,
         new_commit=changeset.new_commit,
         store=store,
+        extra_ignore_patterns=index.extra_ignore_patterns,
+        follow_symlinks=index.follow_symlinks,
     )
 
     queue_ai_summarization(

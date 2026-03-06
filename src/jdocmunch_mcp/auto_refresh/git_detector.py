@@ -132,6 +132,8 @@ def detect_git_changes(
     source_path: str,
     last_commit: Optional[str],
     indexed_file_metas: dict,
+    extra_ignore_patterns: list[str] | None = None,
+    follow_symlinks: bool = False,
 ) -> ChangeSet:
     """Detect changed and deleted files using git.
 
@@ -175,9 +177,15 @@ def detect_git_changes(
         else:
             changed.add(rel_path)
 
-    # 3. Gitignored files → mtime fallback
+    # 3. Honor current local indexing filters during refresh.
+    all_doc_files = scan_doc_files(
+        source_path,
+        extra_ignore_patterns=extra_ignore_patterns,
+        follow_symlinks=follow_symlinks,
+    )
+    deleted.update(rel_path for rel_path in indexed_file_metas if rel_path not in all_doc_files)
+
     # git ls-files returns paths relative to the -C directory (source_path), no stripping needed
-    all_doc_files = scan_doc_files(source_path)
     git_known = set(status.keys())
     if current_commit:
         try:
@@ -190,8 +198,8 @@ def detect_git_changes(
         except (FileNotFoundError, subprocess.TimeoutExpired):
             pass
 
-    gitignored = {f for f in all_doc_files if f not in git_known}
-    mtime_changed = _mtime_check(source_path, gitignored, indexed_file_metas)
+    unmanaged = {f for f in all_doc_files if f not in git_known}
+    mtime_changed = _mtime_check(source_path, unmanaged, indexed_file_metas)
     changed.update(mtime_changed)
 
     return ChangeSet(

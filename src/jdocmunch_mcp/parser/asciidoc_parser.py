@@ -27,14 +27,16 @@ from .sections import (
 )
 
 _HEADING_RE = re.compile(r"^(={1,6})\s+(.+?)(?:\s+=+\s*)?$")
+_BLOCK_DELIMITER_RE = re.compile(r"^(?:--|(?P<char>[-.=*_/+])(?P=char){3,}|\|={3,})\s*$")
 
 
 def parse_asciidoc(content: str, doc_path: str, repo: str) -> list:
     """Parse an AsciiDoc file into Section objects.
 
     Detects ATX-style AsciiDoc headings (= through ======). Content before
-    the first heading becomes a level-0 root section. Heading lines are
-    included in the section's byte range and content body.
+    the first heading becomes a level-0 root section when the document has
+    real preamble content. Heading lines are included in the section's byte
+    range and content body.
 
     Args:
         content: Raw AsciiDoc content.
@@ -59,6 +61,8 @@ def parse_asciidoc(content: str, doc_path: str, repo: str) -> list:
 
     def _finalize_section(byte_end: int) -> None:
         body = "".join(current_lines)
+        if current_level == 0 and not sections and not body.strip():
+            return
         slug = current_slug or slugify(current_title)
         section_id = make_section_id(repo, doc_path, slug, current_level)
         sec = Section(
@@ -79,9 +83,26 @@ def parse_asciidoc(content: str, doc_path: str, repo: str) -> list:
         sec.tags = extract_tags(body)
         sections.append(sec)
 
+    open_block_delimiter: str | None = None
+
     for line in lines:
         line_bytes = len(line.encode("utf-8"))
         stripped = line.rstrip("\n").rstrip("\r")
+        block_delimiter = stripped if _BLOCK_DELIMITER_RE.match(stripped) else None
+
+        if open_block_delimiter is not None:
+            current_lines.append(line)
+            if block_delimiter == open_block_delimiter:
+                open_block_delimiter = None
+            byte_cursor += line_bytes
+            continue
+
+        if block_delimiter is not None:
+            current_lines.append(line)
+            open_block_delimiter = block_delimiter
+            byte_cursor += line_bytes
+            continue
+
         match = _HEADING_RE.match(stripped)
 
         if match:

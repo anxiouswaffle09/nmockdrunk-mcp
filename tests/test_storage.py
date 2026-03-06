@@ -101,6 +101,14 @@ class TestDocStore:
         with pytest.raises(ValueError):
             store.save_index("test", "repo", sections, raw_files, doc_types)
 
+    def test_path_traversal_does_not_leave_partial_index(self, tmp_path):
+        store = make_store(tmp_path)
+        sections, raw_files, doc_types = make_sections_and_files()
+        raw_files["../../etc/passwd"] = "evil"
+        with pytest.raises(ValueError):
+            store.save_index("test", "repo", sections, raw_files, doc_types)
+        assert store.load_index("test", "repo") is None
+
     def test_resolve_repo_slash(self, tmp_path):
         store = make_store(tmp_path)
         owner, name = store._resolve_repo("foo/bar")
@@ -144,6 +152,23 @@ class TestDocStore:
         assert "foo-bar/baz" in repo_ids
         assert "foo/bar-baz" in repo_ids
 
+    def test_resolve_local_repo_collision_adds_suffix(self, tmp_path):
+        store = make_store(tmp_path)
+        first = tmp_path / "one" / "docs"
+        second = tmp_path / "two" / "docs"
+        first.mkdir(parents=True)
+        second.mkdir(parents=True)
+
+        owner1, name1 = store.resolve_local_repo(str(first))
+        store.save_index(owner1, name1, *make_sections_and_files())
+        owner2, name2 = store.resolve_local_repo(str(second))
+
+        assert owner1 == "local"
+        assert owner2 == "local"
+        assert name1 == "docs"
+        assert name2.startswith("docs-")
+        assert name2 != name1
+
 
 class TestDocIndexSearch:
     def setup_method(self):
@@ -178,6 +203,10 @@ class TestDocIndexSearch:
 
     def test_search_empty_query(self):
         results = self.index.search("xyzzy_nonexistent_42")
+        assert results == []
+
+    def test_search_blank_query(self):
+        results = self.index.search("")
         assert results == []
 
 
