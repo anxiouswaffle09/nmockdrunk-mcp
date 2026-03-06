@@ -33,3 +33,6 @@ Thumbs.db
 
 # jDocMunch runtime data (local index cache — not source)
 ~/.local/share/jdocmunch/
+
+# Git worktrees
+.worktrees/
