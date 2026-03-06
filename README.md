@@ -6,10 +6,10 @@ open file → skim hundreds of irrelevant paragraphs → open another file → r
 
 That burns tokens, floods context windows with noise, and forces models to reason through a lot of text they never needed in the first place.
 
-**jDocMunch-MCP lets AI agents navigate documentation by section instead of reading files by brute force.**  
+**nmockdrunk-mcp lets AI agents navigate documentation by section instead of reading files by brute force.**
 It indexes a documentation set once, then retrieves exactly the section the agent actually needs, with byte-precise extraction from the original file.
 
-| Task | Traditional approach | With jDocMunch |
+| Task | Traditional approach | With nmockdrunk-mcp |
 | --- | ---: | ---: |
 | Find a configuration section | ~12,000 tokens | ~400 tokens |
 | Browse documentation structure | ~40,000 tokens | ~800 tokens |
@@ -20,7 +20,7 @@ Index once. Query cheaply forever.
 
 ---
 
-# jDocMunch MCP
+# nmockdrunk-mcp
 
 ### AI-native documentation navigation for serious agents
 
@@ -32,9 +32,21 @@ Index once. Query cheaply forever.
 
 **Stop dumping documentation files into context windows. Start navigating docs structurally.**
 
-jDocMunch indexes documentation once by heading hierarchy and section structure, then gives MCP-compatible agents precise access to the explanations they actually need instead of forcing them to brute-read files.
+nmockdrunk-mcp indexes documentation once by heading hierarchy and section structure, then gives MCP-compatible agents precise access to the explanations they actually need instead of forcing them to brute-read files.
 
 It is built for workflows where token efficiency, context hygiene, and agent reliability matter.
+
+---
+
+## What's different from upstream
+
+nmockdrunk-mcp is a fork of [jgravelle/jdocmunch-mcp](https://github.com/jgravelle/jdocmunch-mcp) with the following improvements:
+
+- **Auto-refresh for local indexes** — the server detects file changes and re-indexes automatically before each tool call; no manual `index_local` needed after editing local docs
+- **Anthropic-only AI summaries** — dropped Google Gemini support; `ANTHROPIC_API_KEY` is the sole optional AI backend, reducing dependencies and complexity
+- **Atomic content cache writes** — incremental reindex now writes content cache files atomically (temp-file + rename), extending the atomic write guarantee that already existed for the index JSON
+- **Optimized section reads** — `get_section` and `get_sections` use a direct byte-range read that avoids a redundant index load per call
+- **Indexing and outline edge case fixes** — hardened handling of malformed heading hierarchies and empty section edge cases
 
 ---
 
@@ -49,7 +61,7 @@ Agents waste money and reasoning bandwidth when they:
 - lose important explanations inside oversized context payloads
 - consume documentation as flat text instead of structured knowledge
 
-jDocMunch fixes that by changing the unit of access from **file** to **section**.
+nmockdrunk-mcp fixes that by changing the unit of access from **file** to **section**.
 
 Instead of handing an agent an entire document, it can retrieve exactly:
 
@@ -104,7 +116,7 @@ Traditional doc retrieval methods all break in different ways:
 - **Keyword search** finds terms but often loses context
 - **Chunking** breaks authored hierarchy and separates explanations from examples
 
-jDocMunch preserves the structure the human author intended:
+nmockdrunk-mcp preserves the structure the human author intended:
 
 - heading hierarchy
 - parent/child relationships
@@ -154,7 +166,7 @@ Examples:
 * `local/myproject::guide.md::configuration#2`
 
 IDs remain stable across re-indexing when the file path, heading text, and heading level do not change.
-For local folders with colliding names, jDocMunch adds a short stable suffix to keep repo IDs distinct.
+For local folders with colliding names, nmockdrunk-mcp adds a short stable suffix to keep repo IDs distinct.
 
 ---
 
@@ -327,7 +339,7 @@ Built-in protections include:
 * binary file detection
 * configurable file size limits
 * storage path injection prevention via `_safe_content_path()`
-* atomic index writes
+* atomic writes (index and content cache)
 
 See `SECURITY.md` for details.
 
@@ -346,7 +358,7 @@ See `SECURITY.md` for details.
 ## Not intended for
 
 * source code symbol indexing (use [jCodeMunch](https://github.com/jgravelle/jcodemunch-mcp) for that)
-* real-time file watching
+* continuous background file watching (auto-refresh polls on tool call, not inotify-style)
 * cross-repository global search
 * semantic/vector similarity search as a standalone product goal
 
