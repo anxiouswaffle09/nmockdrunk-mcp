@@ -1,6 +1,8 @@
 """Index local folder tool — walk, parse, summarize, save."""
 
+import hashlib
 import os
+import subprocess
 import time
 from pathlib import Path
 from typing import Optional
@@ -18,6 +20,19 @@ from ..security import (
 from ..storage import DocStore
 from ..summarizer import summarize_sections
 from ._constants import SKIP_PATTERNS
+
+
+def _get_git_commit(path: str) -> Optional[str]:
+    try:
+        result = subprocess.run(
+            ["git", "-C", path, "rev-parse", "HEAD"],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    return None
 
 
 def _load_gitignore(folder_path: Path) -> Optional[pathspec.PathSpec]:
@@ -206,6 +221,26 @@ def index_local(
         repo_name = folder_path.name
         owner = "local"
 
+        # Build file_hashes with mtime+size for auto-refresh change detection
+        file_hashes = {}
+        for rel_path, content in raw_files.items():
+            abs_path = folder_path / rel_path
+            try:
+                stat = abs_path.stat()
+                file_hashes[rel_path] = {
+                    "sha256": hashlib.sha256(content.encode("utf-8")).hexdigest(),
+                    "mtime": stat.st_mtime,
+                    "size": stat.st_size,
+                }
+            except OSError:
+                file_hashes[rel_path] = {
+                    "sha256": hashlib.sha256(content.encode("utf-8")).hexdigest(),
+                    "mtime": 0.0,
+                    "size": 0,
+                }
+
+        last_commit = _get_git_commit(str(folder_path))
+
         store = DocStore(base_path=storage_path)
         saved = store.save_index(
             owner=owner,
@@ -213,6 +248,9 @@ def index_local(
             sections=all_sections,
             raw_files=raw_files,
             doc_types=doc_types,
+            file_hashes=file_hashes,
+            source_path=str(folder_path),
+            last_indexed_commit=last_commit,
         )
 
         latency_ms = int((time.time() - t0) * 1000)

@@ -21,9 +21,19 @@ from .tools.search_sections import search_sections
 from .tools.get_section import get_section
 from .tools.get_sections import get_sections
 from .tools.delete_index import delete_index
-
+from .auto_refresh import auto_refresh as _auto_refresh
 
 server = Server("jdocmunch-mcp")
+
+READ_TOOLS = {
+    "get_toc", "get_toc_tree", "get_document_outline",
+    "search_sections", "get_section", "get_sections",
+}
+
+
+async def _refresh(repo: str, storage_path: Optional[str]) -> None:
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, _auto_refresh, repo, storage_path)
 
 
 @server.list_tools()
@@ -227,6 +237,13 @@ async def list_tools() -> list[Tool]:
 async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     """Handle tool calls."""
     storage_path = os.environ.get("DOC_INDEX_PATH")
+
+    # Auto-refresh before read tools: check for file changes and re-index incrementally
+    if name in READ_TOOLS and "repo" in arguments:
+        try:
+            await _refresh(arguments["repo"], storage_path)
+        except Exception:
+            pass  # Never let refresh failure block the tool call
 
     try:
         if name == "index_local":

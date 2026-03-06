@@ -11,7 +11,7 @@ from typing import Optional
 
 from ..parser.sections import Section
 
-INDEX_VERSION = 1
+INDEX_VERSION = 2
 
 
 def _file_hash(content: str) -> str:
@@ -30,6 +30,8 @@ class DocIndex:
     sections: list         # Serialized Section dicts (without content by default)
     index_version: int = INDEX_VERSION
     file_hashes: dict = field(default_factory=dict)
+    source_path: Optional[str] = None          # Absolute path to original folder (local indexes only)
+    last_indexed_commit: Optional[str] = None  # git HEAD hash at index time (None if not a git repo)
 
     def get_section(self, section_id: str) -> Optional[dict]:
         """Find a section dict by ID."""
@@ -110,6 +112,12 @@ class DocStore:
         else:
             self.base_path = Path.home() / ".doc-index"
         self.base_path.mkdir(parents=True, exist_ok=True)
+        # Clean up any orphaned .json.tmp files from interrupted writes
+        for tmp in self.base_path.glob("*/*.json.tmp"):
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
 
     def _safe_repo_component(self, value: str, field_name: str) -> str:
         import re
@@ -149,6 +157,8 @@ class DocStore:
         raw_files: dict,        # {doc_path: content}
         doc_types: dict,        # {".md": N}
         file_hashes: Optional[dict] = None,
+        source_path: Optional[str] = None,
+        last_indexed_commit: Optional[str] = None,
     ) -> "DocIndex":
         """Save index and raw files to storage atomically."""
         if file_hashes is None:
@@ -166,6 +176,8 @@ class DocStore:
             sections=[s.to_dict() for s in sections],
             index_version=INDEX_VERSION,
             file_hashes=file_hashes,
+            source_path=source_path,
+            last_indexed_commit=last_indexed_commit,
         )
 
         index_path = self._index_path(owner, name)
@@ -202,6 +214,16 @@ class DocStore:
         if stored_version > INDEX_VERSION:
             return None
 
+        file_hashes = data.get("file_hashes", {})
+        # V1 compat: file_hashes values were bare sha256 strings; wrap them so
+        # auto-refresh always sees the dict format. mtime=0/size=0 forces a
+        # full re-index on first pre-call check, then switches to proper tracking.
+        if stored_version < 2:
+            file_hashes = {
+                fp: (v if isinstance(v, dict) else {"sha256": v, "mtime": 0.0, "size": 0})
+                for fp, v in file_hashes.items()
+            }
+
         return DocIndex(
             repo=data["repo"],
             owner=data["owner"],
@@ -211,7 +233,9 @@ class DocStore:
             doc_types=data["doc_types"],
             sections=data["sections"],
             index_version=stored_version,
-            file_hashes=data.get("file_hashes", {}),
+            file_hashes=file_hashes,
+            source_path=data.get("source_path"),
+            last_indexed_commit=data.get("last_indexed_commit"),
         )
 
     def get_section_content(self, owner: str, name: str, section_id: str) -> Optional[str]:
@@ -284,6 +308,8 @@ class DocStore:
             "sections": index.sections,
             "index_version": index.index_version,
             "file_hashes": index.file_hashes,
+            "source_path": index.source_path,
+            "last_indexed_commit": index.last_indexed_commit,
         }
 
     def _resolve_repo(self, repo: str) -> tuple:
