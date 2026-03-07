@@ -278,6 +278,7 @@ class DocStore:
                 tmp_path.unlink()
             raise
 
+        self._write_sidecar(owner, name, source_path, index.doc_paths)
         return index
 
     def load_index(self, owner: str, name: str) -> Optional[DocIndex]:
@@ -393,6 +394,19 @@ class DocStore:
             shutil.rmtree(content_dir)
             deleted = True
         return deleted
+
+    def _write_sidecar(self, owner: str, name: str, source_path: Optional[str], doc_paths: list) -> None:
+        """Write a lightweight sidecar with just source_path + doc_paths for fast shell hook lookups."""
+        try:
+            index_path = self._index_path(owner, name)
+            sidecar_path = index_path.parent / f"{index_path.stem}.paths.json"
+            data = {"source_path": source_path, "doc_paths": doc_paths}
+            tmp = sidecar_path.with_suffix(".json.tmp")
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(data, f)
+            tmp.replace(sidecar_path)
+        except Exception:
+            pass  # Sidecar is a hint; never break indexing over it
 
     def _index_to_dict(self, index: DocIndex) -> dict:
         return {

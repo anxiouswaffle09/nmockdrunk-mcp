@@ -182,4 +182,5 @@ def reindex_changed_files(
             pass
         return index, []  # Preserve old index on disk failure
 
+    store._write_sidecar(owner, name, source_path, updated_index.doc_paths)
     return updated_index, sections_needing_ai
