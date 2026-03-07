@@ -3,7 +3,7 @@
 ## Directory Structure
 
 ```
-jdocmunch-mcp/
+nmockdrunk-mcp/
 ├── pyproject.toml
 ├── README.md
 ├── SECURITY.md
@@ -33,19 +33,29 @@ jdocmunch-mcp/
 │   │   ├── __init__.py
 │   │   └── batch_summarize.py       # Heading text → AI batch → title fallback
 │   │
-│   └── tools/
+│   ├── tools/
+│   │   ├── __init__.py
+│   │   ├── _constants.py            # SKIP_PATTERNS shared across indexing tools
+│   │   ├── index_local.py           # Local folder indexing
+│   │   ├── index_repo.py            # GitHub repository indexing
+│   │   ├── list_repos.py
+│   │   ├── get_toc.py
+│   │   ├── get_toc_tree.py
+│   │   ├── get_document_outline.py
+│   │   ├── search_sections.py
+│   │   ├── get_section.py
+│   │   ├── get_sections.py
+│   │   └── delete_index.py
+│   │
+│   └── auto_refresh/
 │       ├── __init__.py
-│       ├── _constants.py            # SKIP_PATTERNS shared across indexing tools
-│       ├── index_local.py           # Local folder indexing
-│       ├── index_repo.py            # GitHub repository indexing
-│       ├── list_repos.py
-│       ├── get_toc.py
-│       ├── get_toc_tree.py
-│       ├── get_document_outline.py
-│       ├── search_sections.py
-│       ├── get_section.py
-│       ├── get_sections.py
-│       └── delete_index.py
+│       ├── _scan.py             # File system scan helpers
+│       ├── _types.py            # Shared types for refresh system
+│       ├── git_detector.py      # Git-based change detection
+│       ├── incremental.py       # Incremental reindex logic
+│       ├── mtime_detector.py    # mtime-based change detection
+│       ├── refresh_manager.py   # Orchestrates pre-call refresh
+│       └── summarization_queue.py  # Deferred AI summarization for new sections
 │
 ├── tests/
 │   ├── fixtures/
@@ -66,6 +76,9 @@ jdocmunch-mcp/
 ## Data Flow
 
 ```
+Pre-call auto-refresh (local indexes only)
+    │  mtime / git change detection → incremental reindex if changed
+    ▼
 Documentation files (GitHub API or local folder)
     │
     ▼
@@ -174,8 +187,32 @@ Indexes are stored at `~/.doc-index/` (configurable via `DOC_INDEX_PATH`):
 
 * Sections in the JSON index include byte offsets but **not** full content.
 * Full content is retrieved on demand via **O(1) `seek()` + `read()`** using stored byte offsets.
-* Atomic writes (temp file + rename) prevent corrupt indexes on interrupted writes.
+* Atomic writes (temp file + rename) prevent corrupt state on interrupted writes — applied to both the index JSON and content cache files during incremental reindex.
 * Index version (`INDEX_VERSION = 1`) allows future schema migrations; mismatched versions are ignored and require re-indexing.
+
+---
+
+## Auto-Refresh (Local Indexes)
+
+Before each tool call on a local index, nmockdrunk-mcp checks whether any watched files have changed since the last index. If changes are detected, it runs an incremental reindex before returning results.
+
+**Change detection:** Two strategies — one runs per call based on whether the folder is a git repo:
+- **Git detector** (`git_detector.py`) — used when the folder is a git repo; runs `git diff --name-only` against the last indexed commit to catch committed changes, plus `git status --porcelain` for uncommitted working-tree changes
+- **mtime detector** (`mtime_detector.py`) — used for non-git folders; compares file modification times against stored metadata
+
+**Refresh manager** (`refresh_manager.py`):
+- Orchestrates the full pre-call refresh cycle: detects changes, triggers incremental reindex, and drains the summarization queue
+
+**Incremental reindex** (`incremental.py`):
+- Only parses files that changed, were added, or were deleted
+- Writes updated content cache files atomically (temp file + rename)
+- Merges new section data into the existing index without full re-parse
+
+**Summarization queue** (`summarization_queue.py`):
+- New sections added during auto-refresh are queued for AI summarization
+- Summarization runs asynchronously and does not block the tool response
+
+For most workflows, agents working with local documentation folders never need to call `index_local` again after the initial index — the server detects and applies changes automatically before each tool call.
 
 ---
 
