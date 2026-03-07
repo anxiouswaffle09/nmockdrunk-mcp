@@ -2,11 +2,11 @@
 
 ## Overview
 
-**jdocmunch-mcp** pre-indexes documentation files by their heading hierarchy, assigning each section a stable ID and byte offsets for O(1) content retrieval. Agents discover sections via TOC or search, then retrieve only the content they need.
+**nmockdrunk-mcp** pre-indexes documentation files by their heading hierarchy, assigning each section a stable ID and byte offsets for O(1) content retrieval. Agents discover sections via TOC or search, then retrieve only the content they need.
 
 ### Token Savings
 
-| Scenario                              | Raw dump        | jDocMunch       | Savings |
+| Scenario                              | Raw dump        | nmockdrunk-mcp  | Savings |
 | ------------------------------------- | --------------- | --------------- | ------- |
 | Browse 50-file doc set structure      | ~100,000 tokens | ~2,000 tokens   | **98%** |
 | Find a specific configuration section | ~12,000 tokens  | ~400 tokens     | **97%** |
@@ -30,7 +30,7 @@
 }
 ```
 
-Walks the local directory with full security controls: path traversal prevention, symlink escape protection, secret detection, binary filtering, `.gitignore` respect, and directory pruning. Parses `.md`, `.mdx`, `.markdown`, `.txt`, and `.rst` files.
+Walks the local directory with full security controls: path traversal prevention, symlink escape protection, secret detection, binary filtering, `.gitignore` respect, and directory pruning. Parses `.md`, `.mdx`, `.markdown`, `.txt`, and `.rst` files. After the initial index, nmockdrunk-mcp auto-refreshes this index before each tool call — detecting changed, added, or deleted files and reindexing incrementally without agent intervention.
 
 #### `index_repo` — Index a GitHub repository's documentation
 
