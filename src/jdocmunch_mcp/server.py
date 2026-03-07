@@ -50,11 +50,6 @@ async def list_tools() -> list[Tool]:
                         "type": "string",
                         "description": "Path to local folder (absolute or relative, supports ~ for home directory)"
                     },
-                    "use_ai_summaries": {
-                        "type": "boolean",
-                        "description": "Use AI to generate section summaries (requires ANTHROPIC_API_KEY). When false, uses heading text.",
-                        "default": True
-                    },
                     "extra_ignore_patterns": {
                         "type": "array",
                         "items": {"type": "string"},
@@ -78,11 +73,6 @@ async def list_tools() -> list[Tool]:
                     "url": {
                         "type": "string",
                         "description": "GitHub repository URL or owner/repo string"
-                    },
-                    "use_ai_summaries": {
-                        "type": "boolean",
-                        "description": "Use AI to generate section summaries.",
-                        "default": True
                     }
                 },
                 "required": ["url"]
@@ -249,7 +239,6 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         if name == "index_local":
             result = index_local(
                 path=arguments["path"],
-                use_ai_summaries=arguments.get("use_ai_summaries", True),
                 storage_path=storage_path,
                 extra_ignore_patterns=arguments.get("extra_ignore_patterns"),
                 follow_symlinks=arguments.get("follow_symlinks", False),
@@ -257,7 +246,6 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         elif name == "index_repo":
             result = await index_repo(
                 url=arguments["url"],
-                use_ai_summaries=arguments.get("use_ai_summaries", True),
                 storage_path=storage_path,
             )
         elif name == "list_repos":

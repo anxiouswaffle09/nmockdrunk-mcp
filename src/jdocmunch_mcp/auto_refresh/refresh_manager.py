@@ -8,7 +8,6 @@ from ..storage.doc_store import DocStore
 from .git_detector import is_git_repo, detect_git_changes
 from .mtime_detector import detect_mtime_changes
 from .incremental import reindex_changed_files
-from .summarization_queue import queue_ai_summarization
 
 _repo_locks: dict = {}
 _locks_lock = threading.Lock()
@@ -75,7 +74,7 @@ def _do_refresh(index, store: DocStore, owner: str, name: str) -> None:
     if not changeset.modified and not changeset.deleted:
         return
 
-    updated_index, sections_needing_ai = reindex_changed_files(
+    reindex_changed_files(
         index=index,
         source_path=source_path,
         modified=changeset.modified,
@@ -84,11 +83,4 @@ def _do_refresh(index, store: DocStore, owner: str, name: str) -> None:
         store=store,
         extra_ignore_patterns=index.extra_ignore_patterns,
         follow_symlinks=index.follow_symlinks,
-    )
-
-    queue_ai_summarization(
-        owner=owner,
-        name=name,
-        sections_needing_ai=sections_needing_ai,
-        store=store,
     )

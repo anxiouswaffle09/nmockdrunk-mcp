@@ -23,7 +23,6 @@ def indexed_repo(tmp_path):
     """Index the fixture docs folder and return the repo identifier."""
     result = index_local(
         path=str(FIXTURES / "docs"),
-        use_ai_summaries=False,
         storage_path=str(tmp_path),
     )
     assert result["success"], f"Indexing failed: {result}"
@@ -56,7 +55,6 @@ class TestIndexLocal:
     def test_success(self, tmp_path):
         result = index_local(
             path=str(FIXTURES / "docs"),
-            use_ai_summaries=False,
             storage_path=str(tmp_path),
         )
         assert result["success"] is True
@@ -78,7 +76,6 @@ class TestIndexLocal:
     def test_includes_txt(self, tmp_path):
         result = index_local(
             path=str(FIXTURES / "text"),
-            use_ai_summaries=False,
             storage_path=str(tmp_path),
         )
         assert result["success"] is True
@@ -92,8 +89,8 @@ class TestIndexLocal:
         (first / "a.md").write_text("# One\n\nBody.\n", encoding="utf-8")
         (second / "b.md").write_text("# Two\n\nBody.\n", encoding="utf-8")
 
-        first_result = index_local(path=str(first), use_ai_summaries=False, storage_path=str(tmp_path / "store"))
-        second_result = index_local(path=str(second), use_ai_summaries=False, storage_path=str(tmp_path / "store"))
+        first_result = index_local(path=str(first), storage_path=str(tmp_path / "store"))
+        second_result = index_local(path=str(second), storage_path=str(tmp_path / "store"))
 
         assert first_result["success"] is True
         assert second_result["success"] is True
@@ -106,7 +103,7 @@ class TestIndexLocal:
         (docs / "good.md").write_text("# Good\n\nBody.\n", encoding="utf-8")
         (docs / "weird.md").write_bytes(b"# Weird\n\x00\nBody\n")
 
-        result = index_local(path=str(docs), use_ai_summaries=False, storage_path=str(tmp_path / "store"))
+        result = index_local(path=str(docs), storage_path=str(tmp_path / "store"))
 
         assert result["success"] is True
         assert result["file_count"] == 1
@@ -206,7 +203,7 @@ class TestGetDocumentOutline:
         (docs / "one" / "guide.md").write_text("# One Guide\n", encoding="utf-8")
         (docs / "two" / "guide.md").write_text("# Two Guide\n", encoding="utf-8")
 
-        indexed = index_local(path=str(docs), use_ai_summaries=False, storage_path=str(tmp_path / "store"))
+        indexed = index_local(path=str(docs), storage_path=str(tmp_path / "store"))
         result = get_document_outline(
             repo=indexed["repo"],
             doc_path="guide.md",
@@ -221,7 +218,7 @@ class TestGetDocumentOutline:
         docs.mkdir()
         (docs / "myguide.md").write_text("# Mine\n", encoding="utf-8")
 
-        indexed = index_local(path=str(docs), use_ai_summaries=False, storage_path=str(tmp_path / "store"))
+        indexed = index_local(path=str(docs), storage_path=str(tmp_path / "store"))
         result = get_document_outline(
             repo=indexed["repo"],
             doc_path="guide.md",
@@ -235,7 +232,7 @@ class TestGetDocumentOutline:
         (docs / "nested").mkdir(parents=True)
         (docs / "nested" / "guide.md").write_text("# Guide\n", encoding="utf-8")
 
-        indexed = index_local(path=str(docs), use_ai_summaries=False, storage_path=str(tmp_path / "store"))
+        indexed = index_local(path=str(docs), storage_path=str(tmp_path / "store"))
         result = get_document_outline(
             repo=indexed["repo"],
             doc_path="guide.md",

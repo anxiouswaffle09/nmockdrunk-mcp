@@ -51,7 +51,6 @@ def discover_doc_files(
 
 def index_local(
     path: str,
-    use_ai_summaries: bool = True,
     storage_path: Optional[str] = None,
     extra_ignore_patterns: Optional[list] = None,
     follow_symlinks: bool = False,
@@ -60,7 +59,6 @@ def index_local(
 
     Args:
         path: Path to local folder.
-        use_ai_summaries: Whether to use AI for section summaries.
         storage_path: Custom storage path (default: ~/.doc-index/).
         extra_ignore_patterns: Additional gitignore-style patterns to exclude.
         follow_symlinks: Whether to follow symlinks.
@@ -129,7 +127,7 @@ def index_local(
         if not all_sections:
             return {"success": False, "error": "No sections extracted from files"}
 
-        all_sections = summarize_sections(all_sections, use_ai=use_ai_summaries)
+        all_sections = summarize_sections(all_sections)
 
         # Build file_hashes with mtime+size for auto-refresh change detection
         file_hashes = {}

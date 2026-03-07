@@ -117,7 +117,6 @@ def discover_doc_files(tree_entries: list, max_files: int = 500, gitignore_spec=
 
 async def index_repo(
     url: str,
-    use_ai_summaries: bool = True,
     github_token: Optional[str] = None,
     storage_path: Optional[str] = None,
 ) -> dict:
@@ -125,7 +124,6 @@ async def index_repo(
 
     Args:
         url: GitHub repository URL or owner/repo string.
-        use_ai_summaries: Whether to use AI for section summaries.
         github_token: GitHub API token (optional).
         storage_path: Custom storage path.
 
@@ -209,7 +207,7 @@ async def index_repo(
         if not all_sections:
             return {"success": False, "error": "No sections extracted"}
 
-        all_sections = summarize_sections(all_sections, use_ai=use_ai_summaries)
+        all_sections = summarize_sections(all_sections)
 
         store = DocStore(base_path=storage_path)
         saved = store.save_index(

@@ -4,7 +4,7 @@ import hashlib
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional
 
 from ..parser import parse_file, preprocess_content
 from ..security import is_secret_file, DEFAULT_MAX_FILE_SIZE
@@ -26,7 +26,7 @@ def reindex_changed_files(
     store: DocStore,
     extra_ignore_patterns: list[str] | None = None,
     follow_symlinks: bool = False,
-) -> Tuple[DocIndex, list]:
+) -> DocIndex:
     """Synchronous, no AI. Updates byte offsets and section structure.
 
     Preserves existing summaries for sections whose heading hasn't changed.
@@ -102,15 +102,9 @@ def reindex_changed_files(
                 "size": 0,
             }
 
-    # Tier 1 + Tier 3 summarization synchronously for sections without a summary
-    sections_needing_ai = []
     for sec in new_sections_objs:
         if not sec.summary:
             sec.summary = heading_summary(sec)
-        if len(sec.summary) < 20 and sec.content:
-            sections_needing_ai.append(sec)
-
-    # Tier 3 fallback for any still missing
     for sec in new_sections_objs:
         if not sec.summary:
             sec.summary = title_fallback(sec)
@@ -180,7 +174,7 @@ def reindex_changed_files(
             tmp_path.unlink()
         except OSError:
             pass
-        return index, []  # Preserve old index on disk failure
+        return index  # Preserve old index on disk failure
 
     store._write_sidecar(owner, name, source_path, updated_index.doc_paths)
-    return updated_index, sections_needing_ai
+    return updated_index

@@ -7,15 +7,12 @@ Stored in ~/.doc-index/_savings.json
 """
 
 import json
-import os
 import threading
-import uuid
 from pathlib import Path
 from typing import Optional
 
 _SAVINGS_FILE = "_savings.json"
 _BYTES_PER_TOKEN = 4
-_TELEMETRY_URL = "https://j.gravelle.us/APIs/savings/post.php"
 _SAVINGS_LOCK = threading.Lock()
 
 PRICING = {
@@ -30,27 +27,6 @@ def _savings_path(base_path: Optional[str] = None) -> Path:
     return root / _SAVINGS_FILE
 
 
-def _get_or_create_anon_id(data: dict) -> str:
-    if "anon_id" not in data:
-        data["anon_id"] = str(uuid.uuid4())
-    return data["anon_id"]
-
-
-def _share_savings(delta: int, anon_id: str) -> None:
-    def _post() -> None:
-        try:
-            import httpx
-            httpx.post(
-                _TELEMETRY_URL,
-                json={"delta": delta, "anon_id": anon_id},
-                timeout=3.0,
-            )
-        except Exception:
-            pass
-
-    threading.Thread(target=_post, daemon=True).start()
-
-
 def record_savings(tokens_saved: int, base_path: Optional[str] = None) -> int:
     """Add tokens_saved to the running total. Returns new cumulative total."""
     path = _savings_path(base_path)
@@ -63,10 +39,6 @@ def record_savings(tokens_saved: int, base_path: Optional[str] = None) -> int:
         delta = max(0, tokens_saved)
         total = data.get("total_tokens_saved", 0) + delta
         data["total_tokens_saved"] = total
-
-        if delta > 0 and os.environ.get("JDOCMUNCH_SHARE_SAVINGS", "1") != "0":
-            anon_id = _get_or_create_anon_id(data)
-            _share_savings(delta, anon_id)
 
         try:
             path.write_text(json.dumps(data))

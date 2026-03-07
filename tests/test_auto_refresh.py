@@ -371,7 +371,7 @@ class TestIncrementalReindexModified:
             store=store,
         )
 
-        updated_index, _ = result
+        updated_index = result
         readme_sections = [s for s in updated_index.sections if s.get("doc_path") == "README.md"]
         other_sections = [s for s in updated_index.sections if s.get("doc_path") == "other.md"]
 
@@ -402,7 +402,7 @@ class TestIncrementalReindexSummaryReuse:
             store=store,
         )
 
-        updated_index, _ = result
+        updated_index = result
         sec_a = next(
             (s for s in updated_index.sections if s.get("title") == "Section A"),
             None
@@ -424,7 +424,7 @@ class TestIncrementalReindexDeleted:
             store=store,
         )
 
-        updated_index, _ = result
+        updated_index = result
         readme_sections = [s for s in updated_index.sections if s.get("doc_path") == "README.md"]
         assert len(readme_sections) == 0
         assert "README.md" not in updated_index.doc_paths
@@ -437,7 +437,7 @@ class TestIncrementalReindexDeleted:
 
         (docs_dir / "README.md").write_text("# Root\n\n" + ("x" * (DEFAULT_MAX_FILE_SIZE + 10)), encoding="utf-8")
 
-        updated_index, _ = reindex_changed_files(
+        updated_index = reindex_changed_files(
             index=index,
             source_path=str(docs_dir),
             modified={"README.md"},
@@ -457,7 +457,7 @@ class TestIncrementalReindexDocTypes:
         store, index, docs_dir = _make_store_with_index(tmp_path)
         (docs_dir / "notes.txt").write_text("Paragraph one.\n\nParagraph two.\n", encoding="utf-8")
 
-        updated_index, _ = reindex_changed_files(
+        updated_index = reindex_changed_files(
             index=index,
             source_path=str(docs_dir),
             modified={"notes.txt"},
@@ -543,35 +543,20 @@ class TestConcurrentCalls:
 
 
 class TestBackgroundAiThreadCrash:
-    def test_ai_crash_does_not_propagate(self, tmp_path):
-        """If AI summarization crashes, it must not affect the main thread or index."""
+    def test_ai_queue_is_noop(self, tmp_path):
+        """queue_ai_summarization is a no-op stub; index remains intact."""
         from jdocmunch_mcp.auto_refresh.summarization_queue import queue_ai_summarization
 
         store, index, docs_dir = _make_store_with_index(tmp_path)
 
-        # Create mock Section objects that will make AI crash
-        class BadSection:
-            id = "bad::id"
-            summary = ""
-            content = "content"
-            title = "Bad"
+        # Should not raise and should not modify anything
+        queue_ai_summarization(
+            owner="local",
+            name="docs",
+            sections_needing_ai=[],
+            store=store,
+        )
 
-        sections_needing_ai = [BadSection()]
-
-        with patch("jdocmunch_mcp.auto_refresh.summarization_queue._create_summarizer") as mock_s:
-            mock_s.return_value = MagicMock(
-                summarize_batch=MagicMock(side_effect=RuntimeError("AI exploded"))
-            )
-            # Should not raise
-            queue_ai_summarization(
-                owner="local",
-                name="docs",
-                sections_needing_ai=sections_needing_ai,
-                store=store,
-            )
-            time.sleep(0.05)  # Give daemon thread time to run and fail
-
-        # Index still intact
         loaded = store.load_index("local", "docs")
         assert loaded is not None
 
@@ -636,7 +621,7 @@ class TestAutoRefreshIntegration:
         storage_path = str(tmp_path / "store")
         result = index_local(
             path=str(docs_dir),
-            use_ai_summaries=False,
+
             storage_path=storage_path,
         )
         assert result["success"]
@@ -681,7 +666,7 @@ class TestAutoRefreshIntegration:
         storage_path = str(tmp_path / "store")
         result = index_local(
             path=str(docs_dir),
-            use_ai_summaries=False,
+
             storage_path=storage_path,
         )
         assert result["success"]
@@ -711,7 +696,7 @@ class TestAutoRefreshIntegration:
         storage_path = str(tmp_path / "store")
         result = index_local(
             path=str(docs_dir),
-            use_ai_summaries=False,
+
             storage_path=storage_path,
         )
         assert result["success"]
@@ -734,7 +719,7 @@ class TestAutoRefreshIntegration:
         storage_path = str(tmp_path / "store")
         result = index_local(
             path=str(docs_dir),
-            use_ai_summaries=False,
+
             storage_path=storage_path,
         )
         assert result["success"]
@@ -756,7 +741,7 @@ class TestAutoRefreshIntegration:
         storage_path = str(tmp_path / "store")
         result = index_local(
             path=str(docs_dir),
-            use_ai_summaries=False,
+
             storage_path=storage_path,
         )
         assert result["success"]
@@ -784,7 +769,7 @@ class TestAutoRefreshIntegration:
         storage_path = str(tmp_path / "store")
         result = index_local(
             path=str(docs_dir),
-            use_ai_summaries=False,
+
             storage_path=storage_path,
         )
         assert result["success"]
