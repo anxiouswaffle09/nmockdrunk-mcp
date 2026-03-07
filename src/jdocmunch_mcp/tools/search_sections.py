@@ -27,6 +27,10 @@ def search_sections(
     t0 = time.time()
     store = DocStore(base_path=storage_path)
     owner, name = store._resolve_repo(repo)
+    # Intentional second load: auto_refresh (called by the server before this tool)
+    # may have rewritten the on-disk index if file changes were detected. Loading
+    # fresh here guarantees we operate on the post-refresh version. Using the index
+    # auto_refresh loaded internally would risk returning stale results.
     index = store.load_index(owner, name)
 
     if not index:

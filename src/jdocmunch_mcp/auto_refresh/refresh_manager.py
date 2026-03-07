@@ -31,6 +31,10 @@ def auto_refresh(repo: str, storage_path: Optional[str]) -> None:
     """
     store = DocStore(base_path=storage_path)
     owner, name = store._resolve_repo(repo)
+    # Load the index to check source_path and detect changes. If _do_refresh
+    # rewrites the on-disk index, this copy becomes stale and is discarded.
+    # The calling tool reloads from disk after this returns to get the fresh version.
+    # This is intentional — do not share this index with the tool or cache it here.
     index = store.load_index(owner, name)
 
     if not index or not index.source_path:
