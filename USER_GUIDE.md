@@ -115,6 +115,19 @@ get_toc:             { "repo": "docs" }
 get_document_outline: { "repo": "docs", "doc_path": "README.md" }
 ```
 
+### Auto-Refresh for Local Indexes
+
+After the initial `index_local`, nmockdrunk-mcp automatically detects and re-indexes changed files before each tool call. No manual re-indexing needed.
+
+If you add, edit, or delete files in an indexed local folder, the next tool call will pick up the changes transparently.
+
+To force a full clean re-index (e.g. after restructuring a folder):
+
+```
+delete_index: { "repo": "local/myfolder" }
+index_local:  { "path": "/path/to/myfolder" }
+```
+
 ### Index a GitHub Repository
 
 ```
@@ -207,7 +220,7 @@ local/myproject::guide.md::quick-start#1
 
 IDs are returned by `get_toc`, `get_toc_tree`, `get_document_outline`, and `search_sections`. Pass them to `get_section` or `get_sections` to retrieve content.
 
-For local folders, `repo` normally defaults to `local/{folder-name}`. If that name is already in use for a different folder, jDocMunch adds a short stable suffix. In the simple case you can still use the bare folder name when calling retrieval tools:
+For local folders, `repo` normally defaults to `local/{folder-name}`. If that name is already in use for a different folder, nmockdrunk-mcp adds a short stable suffix. In the simple case you can still use the bare folder name when calling retrieval tools:
 
 ```
 index_local: { "path": "/home/user/docs" }
@@ -218,7 +231,7 @@ get_toc:     { "repo": "docs" }
 
 ## Community Savings Meter
 
-jDocMunch contributes an anonymous token savings delta to a live global counter at [j.gravelle.us](https://j.gravelle.us) with each tool call. Only two values are ever sent: the tokens saved (a number) and a random anonymous install ID. No content, paths, repo names, or anything identifying is transmitted. Network failures are silent and never affect tool performance.
+nmockdrunk-mcp contributes an anonymous token savings delta to a live global counter at [j.gravelle.us](https://j.gravelle.us) with each tool call. Only two values are ever sent: the tokens saved (a number) and a random anonymous install ID. No content, paths, repo names, or anything identifying is transmitted. Network failures are silent and never affect tool performance.
 
 The anonymous install ID is generated once and stored locally in `~/.doc-index/_savings.json`.
 
@@ -257,8 +270,11 @@ Set `GITHUB_TOKEN` to increase GitHub API limits (5,000 requests/hour vs 60 unau
 **AI summaries not working**
 Set `ANTHROPIC_API_KEY` (Claude Haiku). Without this key, summaries fall back to heading text or the title fallback.
 
-**Stale index**
-Use `delete_index` followed by `index_local` or `index_repo` to force a clean re-index.
+**Stale index (local)**
+Local indexes auto-refresh on each tool call. If something looks wrong after a large restructure, use `delete_index` followed by `index_local` to force a full clean re-index.
+
+**Stale index (GitHub)**
+GitHub indexes are not auto-refreshed. Use `delete_index` followed by `index_repo` to update.
 
 **Encoding issues**
 Files with invalid UTF-8 are handled safely using replacement characters.
