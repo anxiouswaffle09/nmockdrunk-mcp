@@ -110,8 +110,8 @@ Add to `.vscode/settings.json`:
 ### Index and Browse a Documentation Folder
 
 ```
-index_local:         { "path": "/path/to/docs" }
-get_toc:             { "repo": "docs" }
+index_local:          { "path": "/path/to/docs" }
+get_repo_overview:    { "repo": "docs" }
 get_document_outline: { "repo": "docs", "doc_path": "README.md" }
 ```
 
@@ -131,8 +131,8 @@ index_local:  { "path": "/path/to/myfolder" }
 ### Index a GitHub Repository
 
 ```
-index_repo:   { "url": "owner/repo" }
-get_toc_tree: { "repo": "owner/repo" }
+index_repo:        { "url": "owner/repo" }
+get_repo_overview: { "repo": "owner/repo" }
 ```
 
 ### Find and Read a Section
@@ -187,18 +187,17 @@ index_local:  { "path": "/path/to/docs" }
 
 ## Tool Reference
 
-| Tool                  | Purpose                              | Key Parameters                                    |
-| --------------------- | ------------------------------------ | ------------------------------------------------- |
-| `index_local`         | Index local documentation folder     | `path`, `use_ai_summaries`, `extra_ignore_patterns`, `follow_symlinks` |
-| `index_repo`          | Index GitHub repository docs         | `url`, `use_ai_summaries`                         |
-| `list_repos`          | List all indexed documentation sets  | —                                                 |
-| `get_toc`             | Flat section list in document order  | `repo`                                            |
-| `get_toc_tree`        | Nested section tree per document     | `repo`                                            |
-| `get_document_outline`| Section hierarchy for one document   | `repo`, `doc_path`                                |
-| `search_sections`     | Weighted search across sections      | `repo`, `query`, `doc_path`, `max_results`        |
-| `get_section`         | Full content of one section          | `repo`, `section_id`, `verify`                    |
-| `get_sections`        | Batch content retrieval              | `repo`, `section_ids`, `verify`                   |
-| `delete_index`        | Delete index and cache               | `repo`                                            |
+| Tool                   | Purpose                                                   | Key Parameters                                    |
+| ---------------------- | --------------------------------------------------------- | ------------------------------------------------- |
+| `index_local`          | Index local documentation folder                          | `path`, `use_ai_summaries`, `extra_ignore_patterns`, `follow_symlinks` |
+| `index_repo`           | Index GitHub repository docs                              | `url`, `use_ai_summaries`                         |
+| `list_repos`           | List all indexed documentation sets                       | —                                                 |
+| `get_repo_overview`    | Lightweight per-document overview (title + section count) | `repo`                                            |
+| `get_document_outline` | Section hierarchy for one document                        | `repo`, `doc_path`                                |
+| `search_sections`      | Weighted search across sections                           | `repo`, `query`, `doc_path`, `max_results`        |
+| `get_section`          | Full content of one section                               | `repo`, `section_id`, `verify`                    |
+| `get_sections`         | Batch content retrieval                                   | `repo`, `section_ids`, `verify`                   |
+| `delete_index`         | Delete index and cache                                    | `repo`                                            |
 
 ---
 
@@ -218,13 +217,13 @@ owner/repo::docs/config.md::authentication-options#2
 local/myproject::guide.md::quick-start#1
 ```
 
-IDs are returned by `get_toc`, `get_toc_tree`, `get_document_outline`, and `search_sections`. Pass them to `get_section` or `get_sections` to retrieve content.
+IDs are returned by `get_document_outline` and `search_sections`. Pass them to `get_section` or `get_sections` to retrieve content.
 
 For local folders, `repo` normally defaults to `local/{folder-name}`. If that name is already in use for a different folder, nmockdrunk-mcp adds a short stable suffix. In the simple case you can still use the bare folder name when calling retrieval tools:
 
 ```
-index_local: { "path": "/home/user/docs" }
-get_toc:     { "repo": "docs" }
+index_local:       { "path": "/home/user/docs" }
+get_repo_overview: { "repo": "docs" }
 ```
 
 ---
@@ -300,8 +299,8 @@ Indexes are stored at `~/.doc-index/` (override with the `DOC_INDEX_PATH` enviro
 
 ## Tips
 
-1. Start with `get_toc` or `get_toc_tree` to understand the structure of an indexed doc set.
-2. Use `get_document_outline` when you already know which document is relevant — lighter than a full TOC.
+1. Start with `get_repo_overview` to understand the structure of an indexed doc set — one entry per file with title and section count.
+2. Use `get_document_outline` when you already know which document is relevant and need its full section hierarchy.
 3. Narrow `search_sections` with `doc_path` to avoid cross-document noise when searching within a known file.
 4. Batch-retrieve related sections with `get_sections` instead of repeated `get_section` calls.
 5. Use `verify: true` on `get_section` to detect whether the doc source has changed since indexing.

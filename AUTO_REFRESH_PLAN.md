@@ -3,7 +3,7 @@
 ## Overview
 
 Add pre-call automatic index refresh to jdocmunch-mcp, mirroring the pattern from jcodemunch.
-Before any read tool call (`get_toc`, `get_section`, `search_sections`, etc.), the server checks
+Before any read tool call (`get_repo_overview`, `get_section`, `search_sections`, etc.), the server checks
 whether indexed files have changed and re-indexes only what changed — without blocking on AI summarization.
 
 Change detection uses git when available (primary), falling back to mtime+size for non-git folders.
@@ -569,7 +569,7 @@ In `call_tool`, add auto-refresh before dispatching read tools:
 
 ```python
 READ_TOOLS = {
-    "get_toc", "get_toc_tree", "get_document_outline",
+    "get_repo_overview", "get_document_outline",
     "search_sections", "get_section", "get_sections"
 }
 

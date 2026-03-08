@@ -39,12 +39,11 @@ nmockdrunk-mcp/
 │   │   ├── index_local.py           # Local folder indexing
 │   │   ├── index_repo.py            # GitHub repository indexing
 │   │   ├── list_repos.py
-│   │   ├── get_toc.py
-│   │   ├── get_toc_tree.py
 │   │   ├── get_document_outline.py
-│   │   ├── search_sections.py
+│   │   ├── get_repo_overview.py
 │   │   ├── get_section.py
 │   │   ├── get_sections.py
+│   │   ├── search_sections.py
 │   │   └── delete_index.py
 │   │
 │   └── auto_refresh/

@@ -14,8 +14,7 @@ from mcp.types import Tool, TextContent
 from .tools.index_local import index_local
 from .tools.index_repo import index_repo
 from .tools.list_repos import list_repos
-from .tools.get_toc import get_toc
-from .tools.get_toc_tree import get_toc_tree
+from .tools.get_repo_overview import get_repo_overview
 from .tools.get_document_outline import get_document_outline
 from .tools.search_sections import search_sections
 from .tools.get_section import get_section
@@ -26,7 +25,7 @@ from .auto_refresh import auto_refresh as _auto_refresh
 server = Server("jdocmunch-mcp")
 
 READ_TOOLS = {
-    "get_toc", "get_toc_tree", "get_document_outline",
+    "get_repo_overview", "get_document_outline",
     "search_sections", "get_section", "get_sections",
 }
 
@@ -42,7 +41,7 @@ async def list_tools() -> list[Tool]:
     return [
         Tool(
             name="index_local",
-            description="Index a local folder containing documentation files (.md, .txt, .rst). Parses by heading hierarchy into sections for efficient retrieval.",
+            description="Index a local folder containing documentation files (.md, .rst, .txt, .adoc, .ipynb, .html, and more). Parses by heading hierarchy into sections for efficient retrieval.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -66,7 +65,7 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="index_repo",
-            description="Index a GitHub repository's documentation. Fetches .md/.txt files, parses sections, and saves to local storage.",
+            description="Index a GitHub repository's documentation. Fetches .md, .rst, .txt, .adoc, .ipynb, .html, and more; parses sections, and saves to local storage.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -87,22 +86,8 @@ async def list_tools() -> list[Tool]:
             }
         ),
         Tool(
-            name="get_toc",
-            description="Get a flat table of contents for all sections in a repo, sorted by document order. Content is excluded — use get_section to retrieve content.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "repo": {
-                        "type": "string",
-                        "description": "Repository identifier (owner/repo or just repo name)"
-                    }
-                },
-                "required": ["repo"]
-            }
-        ),
-        Tool(
-            name="get_toc_tree",
-            description="Get a nested table of contents tree per document. Shows parent/child heading relationships. Content is excluded.",
+            name="get_repo_overview",
+            description="Get a lightweight overview of all documents in a repo — one entry per file with its top-level title and section count. Use to orient to an unfamiliar repo before searching or drilling into specific docs.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -161,7 +146,7 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="get_section",
-            description="Retrieve the full content of a specific section using byte-range reads. Use after identifying section IDs via search_sections or get_toc.",
+            description="Retrieve the full content of a specific section using byte-range reads. Use after identifying section IDs via search_sections, get_document_outline, or get_repo_overview.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -171,7 +156,7 @@ async def list_tools() -> list[Tool]:
                     },
                     "section_id": {
                         "type": "string",
-                        "description": "Section ID from get_toc, search_sections, or get_document_outline"
+                        "description": "Section ID from search_sections, get_document_outline, or get_repo_overview"
                     },
                     "verify": {
                         "type": "boolean",
@@ -184,7 +169,7 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="get_sections",
-            description="Batch content retrieval for multiple sections in one call.",
+            description="Retrieve full content for multiple sections in one call. More efficient than repeated get_section calls.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -250,13 +235,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             )
         elif name == "list_repos":
             result = list_repos(storage_path=storage_path)
-        elif name == "get_toc":
-            result = get_toc(
-                repo=arguments["repo"],
-                storage_path=storage_path,
-            )
-        elif name == "get_toc_tree":
-            result = get_toc_tree(
+        elif name == "get_repo_overview":
+            result = get_repo_overview(
                 repo=arguments["repo"],
                 storage_path=storage_path,
             )

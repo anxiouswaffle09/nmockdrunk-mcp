@@ -18,7 +18,7 @@ def get_section(
 
     Args:
         repo: Repository identifier.
-        section_id: Section ID from get_toc, search_sections, etc.
+        section_id: Section ID from search_sections, get_document_outline, or get_repo_overview.
         verify: If True, verify content hash matches the stored hash.
         storage_path: Custom storage path.
 

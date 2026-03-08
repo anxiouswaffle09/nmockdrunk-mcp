@@ -8,8 +8,7 @@ from jdocmunch_mcp.auto_refresh._scan import _should_skip
 from jdocmunch_mcp.tools.index_local import index_local
 from jdocmunch_mcp.tools.list_repos import list_repos
 from jdocmunch_mcp.tools.delete_index import delete_index
-from jdocmunch_mcp.tools.get_toc import get_toc
-from jdocmunch_mcp.tools.get_toc_tree import get_toc_tree
+from jdocmunch_mcp.tools.get_repo_overview import get_repo_overview
 from jdocmunch_mcp.tools.get_document_outline import get_document_outline
 from jdocmunch_mcp.tools.search_sections import search_sections
 from jdocmunch_mcp.tools.get_section import get_section
@@ -136,44 +135,38 @@ class TestDeleteIndex:
         assert result["success"] is False
 
 
-class TestGetToc:
-    def test_returns_sections(self, indexed_repo):
-        repo_id, storage_path = indexed_repo
-        result = get_toc(repo=repo_id, storage_path=storage_path)
-        assert "sections" in result
-        assert result["section_count"] >= 1
-        assert "_meta" in result
-
-    def test_no_content_field(self, indexed_repo):
-        repo_id, storage_path = indexed_repo
-        result = get_toc(repo=repo_id, storage_path=storage_path)
-        for sec in result["sections"]:
-            assert "content" not in sec
-
-    def test_sorted_by_doc_and_offset(self, indexed_repo):
-        repo_id, storage_path = indexed_repo
-        result = get_toc(repo=repo_id, storage_path=storage_path)
-        secs = result["sections"]
-        for i in range(1, len(secs)):
-            prev = (secs[i - 1]["doc_path"], secs[i - 1]["byte_start"])
-            curr = (secs[i]["doc_path"], secs[i]["byte_start"])
-            assert prev <= curr
-
-
-class TestGetTocTree:
+class TestGetRepoOverview:
     def test_returns_documents(self, indexed_repo):
         repo_id, storage_path = indexed_repo
-        result = get_toc_tree(repo=repo_id, storage_path=storage_path)
+        result = get_repo_overview(repo=repo_id, storage_path=storage_path)
         assert "documents" in result
-        assert result["doc_count"] >= 1
+        assert "doc_count" in result
+        assert len(result["documents"]) > 0
 
-    def test_nested_structure(self, indexed_repo):
+    def test_document_shape(self, indexed_repo):
         repo_id, storage_path = indexed_repo
-        result = get_toc_tree(repo=repo_id, storage_path=storage_path)
-        # Each document has sections with potential children
+        result = get_repo_overview(repo=repo_id, storage_path=storage_path)
         for doc in result["documents"]:
-            assert "doc_path" in doc
+            assert "path" in doc
+            assert "title" in doc
             assert "sections" in doc
+
+    def test_no_content(self, indexed_repo):
+        repo_id, storage_path = indexed_repo
+        result = get_repo_overview(repo=repo_id, storage_path=storage_path)
+        for doc in result["documents"]:
+            assert "content" not in doc
+
+    def test_sorted(self, indexed_repo):
+        repo_id, storage_path = indexed_repo
+        result = get_repo_overview(repo=repo_id, storage_path=storage_path)
+        docs = result["documents"]
+        for i in range(1, len(docs)):
+            assert docs[i - 1]["path"] <= docs[i]["path"]
+
+    def test_not_found(self, tmp_path):
+        result = get_repo_overview(repo="nobody/fakerepo", storage_path=str(tmp_path))
+        assert "error" in result
 
 
 class TestGetDocumentOutline:
@@ -296,8 +289,10 @@ class TestSearchSections:
 class TestGetSection:
     def test_get_content(self, indexed_repo):
         repo_id, storage_path = indexed_repo
-        toc = get_toc(repo=repo_id, storage_path=storage_path)
-        first_id = toc["sections"][0]["id"]
+        overview = get_repo_overview(repo=repo_id, storage_path=storage_path)
+        first_doc_path = overview["documents"][0]["path"]
+        outline = get_document_outline(repo=repo_id, doc_path=first_doc_path, storage_path=storage_path)
+        first_id = outline["sections"][0]["id"]
 
         result = get_section(
             repo=repo_id,
@@ -309,8 +304,10 @@ class TestGetSection:
 
     def test_verify_hash(self, indexed_repo):
         repo_id, storage_path = indexed_repo
-        toc = get_toc(repo=repo_id, storage_path=storage_path)
-        first_id = toc["sections"][0]["id"]
+        overview = get_repo_overview(repo=repo_id, storage_path=storage_path)
+        first_doc_path = overview["documents"][0]["path"]
+        outline = get_document_outline(repo=repo_id, doc_path=first_doc_path, storage_path=storage_path)
+        first_id = outline["sections"][0]["id"]
 
         result = get_section(
             repo=repo_id,
@@ -335,8 +332,10 @@ class TestGetSection:
 class TestGetSections:
     def test_batch_retrieval(self, indexed_repo):
         repo_id, storage_path = indexed_repo
-        toc = get_toc(repo=repo_id, storage_path=storage_path)
-        ids = [s["id"] for s in toc["sections"][:3]]
+        overview = get_repo_overview(repo=repo_id, storage_path=storage_path)
+        first_doc_path = overview["documents"][0]["path"]
+        outline = get_document_outline(repo=repo_id, doc_path=first_doc_path, storage_path=storage_path)
+        ids = [s["id"] for s in outline["sections"][:3]]
 
         result = get_sections(
             repo=repo_id,
@@ -349,8 +348,10 @@ class TestGetSections:
     def test_meta_complete(self, indexed_repo):
         """_meta must include tokens_saved, total_tokens_saved, and cost_avoided."""
         repo_id, storage_path = indexed_repo
-        toc = get_toc(repo=repo_id, storage_path=storage_path)
-        ids = [s["id"] for s in toc["sections"][:2]]
+        overview = get_repo_overview(repo=repo_id, storage_path=storage_path)
+        first_doc_path = overview["documents"][0]["path"]
+        outline = get_document_outline(repo=repo_id, doc_path=first_doc_path, storage_path=storage_path)
+        ids = [s["id"] for s in outline["sections"][:2]]
 
         result = get_sections(repo=repo_id, section_ids=ids, storage_path=storage_path)
         meta = result["_meta"]

@@ -273,8 +273,7 @@ After saving the config, **restart Claude Desktop / Claude Code**.
 index_local:          { "path": "/path/to/docs" }
 index_repo:           { "url": "owner/repo" }
 
-get_toc:              { "repo": "owner/repo" }
-get_toc_tree:         { "repo": "owner/repo" }
+get_repo_overview:    { "repo": "owner/repo" }
 get_document_outline: { "repo": "owner/repo", "doc_path": "docs/config.md" }
 search_sections:      { "repo": "owner/repo", "query": "authentication" }
 get_section:          { "repo": "owner/repo", "section_id": "owner/repo::docs/config.md::authentication#1" }
@@ -284,18 +283,17 @@ get_section:          { "repo": "owner/repo", "section_id": "owner/repo::docs/co
 
 ## Tool surface
 
-| Tool                   | Purpose                                  |
-| ---------------------- | ---------------------------------------- |
-| `index_local`          | Index a local documentation folder       |
-| `index_repo`           | Index a GitHub repository’s docs         |
-| `list_repos`           | List indexed documentation sets          |
-| `get_toc`              | Flat section list in document order      |
-| `get_toc_tree`         | Nested section tree per document         |
-| `get_document_outline` | Section hierarchy for one document       |
-| `search_sections`      | Weighted search returning summaries only |
-| `get_section`          | Full content of one section              |
-| `get_sections`         | Batch content retrieval                  |
-| `delete_index`         | Remove a doc index                       |
+| Tool                   | Purpose                                                    |
+| ---------------------- | ---------------------------------------------------------- |
+| `index_local`          | Index a local documentation folder                         |
+| `index_repo`           | Index a GitHub repository’s docs                           |
+| `list_repos`           | List indexed documentation sets                            |
+| `get_repo_overview`    | Lightweight per-document overview (title + section count)  |
+| `get_document_outline` | Section hierarchy for one document                         |
+| `search_sections`      | Weighted search returning summaries only                   |
+| `get_section`          | Full content of one section                                |
+| `get_sections`         | Batch content retrieval                                    |
+| `delete_index`         | Remove a doc index                                         |
 
 Search and retrieval tools include a `_meta` envelope with timing, token savings, and cost avoided.
 

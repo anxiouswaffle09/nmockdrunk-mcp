@@ -22,7 +22,7 @@ from jdocmunch_mcp.auto_refresh.refresh_manager import auto_refresh
 from jdocmunch_mcp.tools.index_local import index_local
 from jdocmunch_mcp.tools.get_section import get_section
 from jdocmunch_mcp.tools.search_sections import search_sections
-from jdocmunch_mcp.tools.get_toc import get_toc
+from jdocmunch_mcp.tools.get_repo_overview import get_repo_overview
 from jdocmunch_mcp.security import DEFAULT_MAX_FILE_SIZE
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -704,8 +704,9 @@ class TestAutoRefreshIntegration:
         (docs_dir / "ignored.md").write_text("# Ignored\n\nShould stay hidden.\n", encoding="utf-8")
         auto_refresh(result["repo"], storage_path)
 
-        toc = get_toc(repo=result["repo"], storage_path=storage_path)
-        doc_paths = {sec["doc_path"] for sec in toc["sections"]}
+        overview = get_repo_overview(repo=result["repo"], storage_path=storage_path)
+        assert "error" not in overview
+        doc_paths = {doc["path"] for doc in overview["documents"]}
         assert "ignored.md" not in doc_paths
 
     def test_auto_refresh_skips_symlink_escape(self, tmp_path):
@@ -727,10 +728,9 @@ class TestAutoRefreshIntegration:
         (docs_dir / "link.md").symlink_to(outside_dir / "leak.md")
         auto_refresh(result["repo"], storage_path)
 
-        toc = get_toc(repo=result["repo"], storage_path=storage_path)
-        titles = [sec["title"] for sec in toc["sections"]]
-        doc_paths = {sec["doc_path"] for sec in toc["sections"]}
-        assert "Leak" not in titles
+        overview = get_repo_overview(repo=result["repo"], storage_path=storage_path)
+        assert "error" not in overview
+        doc_paths = {doc["path"] for doc in overview["documents"]}
         assert "link.md" not in doc_paths
 
     def test_auto_refresh_removes_binary_markdown_file(self, tmp_path):

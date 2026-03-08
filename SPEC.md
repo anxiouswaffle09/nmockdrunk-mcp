@@ -15,7 +15,7 @@
 
 ---
 
-## MCP Tools (10)
+## MCP Tools (9)
 
 ### Indexing Tools
 
@@ -61,7 +61,7 @@ Deletes both the index JSON and the raw content cache directory.
 
 No input required. Returns all indexed repositories with section counts, document counts, and document type breakdown.
 
-#### `get_toc` — Flat table of contents
+#### `get_repo_overview` — Lightweight per-document overview
 
 ```json
 {
@@ -69,17 +69,21 @@ No input required. Returns all indexed repositories with section counts, documen
 }
 ```
 
-Returns all sections in document order with their IDs, titles, levels, and summaries. Content is excluded — use `get_section` to retrieve full content.
+Returns a lightweight per-document overview — one entry per file with its top-level heading title and section count. No content, no metadata bloat. Use this to orient to an unfamiliar repo before searching or drilling into specific docs.
 
-#### `get_toc_tree` — Nested table of contents tree
+Example response:
 
 ```json
 {
-  "repo": "owner/repo"
+  "repo": "local/Mikup",
+  "doc_count": 65,
+  "documents": [
+    {"path": "Audio_Standards.md", "title": "Mikup Audio Analysis Standards", "sections": 13},
+    {"path": "README.md", "title": "Project Mikup", "sections": 8}
+  ],
+  "_meta": {"latency_ms": 4}
 }
 ```
-
-Returns sections organized by document, with parent/child heading relationships visible. Content excluded.
 
 #### `get_document_outline` — Section hierarchy for one document
 
@@ -90,7 +94,7 @@ Returns sections organized by document, with parent/child heading relationships 
 }
 ```
 
-Returns the heading hierarchy for a single file without content. Lighter than `get_toc` when you already know which document is relevant.
+Returns the heading hierarchy for a single file without content. Use this when you already know which document is relevant and need its full section structure.
 
 ---
 
@@ -219,7 +223,7 @@ local/myproject::guide.md::quick-start#1
 
 **Slug:** heading text lowercased, non-alphanumeric sequences replaced with hyphens. Duplicate slugs within the same document receive `-2`, `-3` suffixes.
 
-Section IDs are returned by `get_toc`, `get_toc_tree`, `get_document_outline`, and `search_sections`. Pass them to `get_section` or `get_sections` to retrieve content.
+Section IDs are returned by `get_document_outline` and `search_sections`. Pass them to `get_section` or `get_sections` to retrieve content.
 
 ---
 
