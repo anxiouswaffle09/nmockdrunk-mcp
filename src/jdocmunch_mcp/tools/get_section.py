@@ -51,11 +51,8 @@ def get_section(
 
     # Token savings: whole doc bytes vs this section bytes
     doc_path = sec.get("doc_path", "")
-    raw_bytes = sum(
-        len(s.get("content", "").encode("utf-8"))
-        for s in index.sections
-        if s.get("doc_path") == doc_path
-    )
+    doc_sections = [s for s in index.sections if s.get("doc_path") == doc_path]
+    raw_bytes = max((s.get("byte_end", 0) for s in doc_sections), default=0)
     response_bytes = len(content.encode("utf-8"))
     tokens_saved = estimate_savings(raw_bytes, response_bytes)
     total = record_savings(tokens_saved, storage_path)

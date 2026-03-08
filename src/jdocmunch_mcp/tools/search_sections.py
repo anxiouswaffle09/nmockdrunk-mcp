@@ -41,9 +41,8 @@ def search_sections(
     # Calculate token savings: matched docs full bytes vs summary-only response
     matched_doc_paths = {r.get("doc_path") for r in results}
     raw_bytes = sum(
-        len(s.get("content", "").encode("utf-8"))
-        for s in index.sections
-        if s.get("doc_path") in matched_doc_paths
+        max((s.get("byte_end", 0) for s in index.sections if s.get("doc_path") == dp), default=0)
+        for dp in matched_doc_paths
     )
     response_bytes = sum(len(str(r).encode("utf-8")) for r in results)
     tokens_saved = estimate_savings(raw_bytes, response_bytes)

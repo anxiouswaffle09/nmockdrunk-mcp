@@ -79,7 +79,7 @@ def get_document_outline(
             "byte_end": sec.get("byte_end"),
         })
 
-    raw_bytes = sum(len(s.get("content", "").encode("utf-8")) for s in doc_sections)
+    raw_bytes = max((s.get("byte_end", 0) for s in doc_sections), default=0)
     response_bytes = sum(len(str(o).encode("utf-8")) for o in outline)
     tokens_saved = estimate_savings(raw_bytes, response_bytes)
     total = record_savings(tokens_saved, storage_path)

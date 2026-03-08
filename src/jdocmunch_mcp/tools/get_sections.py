@@ -35,6 +35,7 @@ def get_sections(
 
     results = []
     total_tokens_saved = 0
+    doc_size_cache: dict[str, int] = {}
 
     for section_id in section_ids:
         sec = index.get_section(section_id)
@@ -56,11 +57,12 @@ def get_sections(
             result_sec["hash_verified"] = (actual_hash == stored_hash) if stored_hash else None
 
         doc_path = sec.get("doc_path", "")
-        raw_bytes = sum(
-            len(s.get("content", "").encode("utf-8"))
-            for s in index.sections
-            if s.get("doc_path") == doc_path
-        )
+        if doc_path not in doc_size_cache:
+            doc_sections = [s for s in index.sections if s.get("doc_path") == doc_path]
+            doc_size_cache[doc_path] = max(
+                (s.get("byte_end", 0) for s in doc_sections), default=0
+            )
+        raw_bytes = doc_size_cache[doc_path]
         response_bytes = len(content.encode("utf-8"))
         tokens_saved = estimate_savings(raw_bytes, response_bytes)
         total_tokens_saved += tokens_saved
